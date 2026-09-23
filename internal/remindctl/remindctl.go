@@ -49,8 +49,9 @@ func (r Reminder) IsOverdue(now time.Time) bool {
 	if due.IsZero() {
 		return false
 	}
+	localDue := due.In(now.Location())
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	dueDay := time.Date(due.Year(), due.Month(), due.Day(), 0, 0, 0, 0, now.Location())
+	dueDay := time.Date(localDue.Year(), localDue.Month(), localDue.Day(), 0, 0, 0, 0, now.Location())
 	return dueDay.Before(today)
 }
 
@@ -63,8 +64,9 @@ func (r Reminder) IsDueToday(now time.Time) bool {
 	if due.IsZero() {
 		return false
 	}
+	localDue := due.In(now.Location())
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	dueDay := time.Date(due.Year(), due.Month(), due.Day(), 0, 0, 0, 0, now.Location())
+	dueDay := time.Date(localDue.Year(), localDue.Month(), localDue.Day(), 0, 0, 0, 0, now.Location())
 	return dueDay.Equal(today)
 }
 
@@ -127,7 +129,7 @@ func (c *Client) Complete(idPrefix string) error {
 }
 
 // Add creates a new reminder.
-func (c *Client) Add(title, list, due, priority string) error {
+func (c *Client) Add(title, list, due, priority, notes string) error {
 	args := []string{"add", title}
 	if list != "" {
 		args = append(args, "--list", list)
@@ -138,12 +140,15 @@ func (c *Client) Add(title, list, due, priority string) error {
 	if priority != "" && priority != "none" {
 		args = append(args, "--priority", priority)
 	}
+	if notes != "" {
+		args = append(args, "--notes", notes)
+	}
 	_, err := c.run(args...)
 	return err
 }
 
 // Edit modifies an existing reminder by ID prefix.
-func (c *Client) Edit(idPrefix string, title, due, priority string) error {
+func (c *Client) Edit(idPrefix string, title, due, priority, notes string) error {
 	args := []string{"edit", idPrefix}
 	if title != "" {
 		args = append(args, "--title", title)
@@ -153,6 +158,9 @@ func (c *Client) Edit(idPrefix string, title, due, priority string) error {
 	}
 	if priority != "" {
 		args = append(args, "--priority", priority)
+	}
+	if notes != "" {
+		args = append(args, "--notes", notes)
 	}
 	if len(args) == 2 {
 		return nil // nothing to edit

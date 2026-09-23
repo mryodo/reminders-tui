@@ -18,6 +18,10 @@ type keyMap struct {
 	View2    key.Binding
 	View3    key.Binding
 	View4    key.Binding
+	View5    key.Binding
+	View6    key.Binding
+	View7    key.Binding
+	View8    key.Binding
 	Enter    key.Binding
 	Escape   key.Binding
 }
@@ -69,19 +73,35 @@ var keys = keyMap{
 	),
 	View1: key.NewBinding(
 		key.WithKeys("1"),
-		key.WithHelp("1", "today"),
+		key.WithHelp("1", "this week"),
 	),
 	View2: key.NewBinding(
 		key.WithKeys("2"),
-		key.WithHelp("2", "upcoming"),
+		key.WithHelp("2", "today"),
 	),
 	View3: key.NewBinding(
 		key.WithKeys("3"),
-		key.WithHelp("3", "lists"),
+		key.WithHelp("3", "upcoming"),
 	),
 	View4: key.NewBinding(
 		key.WithKeys("4"),
-		key.WithHelp("4", "all"),
+		key.WithHelp("4", "lists"),
+	),
+	View5: key.NewBinding(
+		key.WithKeys("5"),
+		key.WithHelp("5", "teaching"),
+	),
+	View6: key.NewBinding(
+		key.WithKeys("6"),
+		key.WithHelp("6", "research"),
+	),
+	View7: key.NewBinding(
+		key.WithKeys("7"),
+		key.WithHelp("7", "habits"),
+	),
+	View8: key.NewBinding(
+		key.WithKeys("8"),
+		key.WithHelp("8", "tasks"),
 	),
 	Enter: key.NewBinding(
 		key.WithKeys("enter"),

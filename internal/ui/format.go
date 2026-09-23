@@ -30,8 +30,9 @@ func RelativeDate(due time.Time, now time.Time) string {
 		return ""
 	}
 
+	localDue := due.In(now.Location())
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	dueDay := time.Date(due.Year(), due.Month(), due.Day(), 0, 0, 0, 0, now.Location())
+	dueDay := time.Date(localDue.Year(), localDue.Month(), localDue.Day(), 0, 0, 0, 0, now.Location())
 	diff := dueDay.Sub(today)
 	days := int(math.Round(diff.Hours() / 24))
 
@@ -49,10 +50,10 @@ func RelativeDate(due time.Time, now time.Time) string {
 	case days > 7 && days <= 14:
 		return "next week"
 	default:
-		if due.Year() == now.Year() {
-			return due.Format("Mon Jan 2")
+		if localDue.Year() == now.Year() {
+			return localDue.Format("Mon Jan 2")
 		}
-		return due.Format("Jan 2, 2006")
+		return localDue.Format("Jan 2, 2006")
 	}
 }
 
@@ -63,8 +64,9 @@ func FormatDueDate(due time.Time, now time.Time) string {
 	}
 
 	rel := RelativeDate(due, now)
+	localDue := due.In(now.Location())
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	dueDay := time.Date(due.Year(), due.Month(), due.Day(), 0, 0, 0, 0, now.Location())
+	dueDay := time.Date(localDue.Year(), localDue.Month(), localDue.Day(), 0, 0, 0, 0, now.Location())
 
 	switch {
 	case dueDay.Before(today):

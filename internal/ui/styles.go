@@ -2,42 +2,43 @@ package ui
 
 import "github.com/charmbracelet/lipgloss"
 
-// Color palette -- warm, distinctive, not generic.
+// Color palette -- uses the terminal's own ANSI colors (0-15) rather than
+// fixed hex values, so the app inherits whichever theme the user's terminal
+// is configured with instead of imposing one.
 var (
 	// Base colors
-	ColorBg        = lipgloss.Color("#1a1b26") // deep navy bg
-	ColorFg        = lipgloss.Color("#c0caf5") // soft blue-white
-	ColorFgDim     = lipgloss.Color("#565f89") // muted comment
-	ColorFgMuted   = lipgloss.Color("#7982a9") // slightly brighter muted
-	ColorAccent    = lipgloss.Color("#7aa2f7") // bright blue accent
-	ColorAccentDim = lipgloss.Color("#3d59a1") // dim blue
+	ColorFg        lipgloss.TerminalColor = lipgloss.NoColor{}     // terminal default foreground
+	ColorFgDim     lipgloss.TerminalColor = lipgloss.ANSIColor(8)  // bright black
+	ColorFgMuted   lipgloss.TerminalColor = lipgloss.ANSIColor(7)  // white
+	ColorAccent    lipgloss.TerminalColor = lipgloss.ANSIColor(12) // bright blue
+	ColorAccentDim lipgloss.TerminalColor = lipgloss.ANSIColor(4)  // blue
 
 	// Priority colors
-	ColorHigh   = lipgloss.Color("#f7768e") // red-pink
-	ColorMedium = lipgloss.Color("#e0af68") // warm amber
-	ColorLow    = lipgloss.Color("#7dcfff") // sky blue
-	ColorNone   = lipgloss.Color("#444b6a") // very dim
+	ColorHigh   lipgloss.TerminalColor = lipgloss.ANSIColor(1) // red
+	ColorMedium lipgloss.TerminalColor = lipgloss.ANSIColor(3) // yellow
+	ColorLow    lipgloss.TerminalColor = lipgloss.ANSIColor(6) // cyan
+	ColorNone   lipgloss.TerminalColor = lipgloss.ANSIColor(8) // bright black
 
 	// Status colors
-	ColorOverdue = lipgloss.Color("#f7768e") // same red
-	ColorToday   = lipgloss.Color("#9ece6a") // green
-	ColorSoon    = lipgloss.Color("#e0af68") // amber
-	ColorFuture  = lipgloss.Color("#7dcfff") // sky
+	ColorOverdue lipgloss.TerminalColor = lipgloss.ANSIColor(1) // red
+	ColorToday   lipgloss.TerminalColor = lipgloss.ANSIColor(2) // green
+	ColorSoon    lipgloss.TerminalColor = lipgloss.ANSIColor(3) // yellow
+	ColorFuture  lipgloss.TerminalColor = lipgloss.ANSIColor(6) // cyan
 
 	// UI chrome
-	ColorBorder    = lipgloss.Color("#3b4261")
-	ColorSelection = lipgloss.Color("#283457") // selection background
-	ColorSuccess   = lipgloss.Color("#9ece6a")
-	ColorError     = lipgloss.Color("#f7768e")
+	ColorBorder    lipgloss.TerminalColor = lipgloss.ANSIColor(8) // bright black
+	ColorSelection lipgloss.TerminalColor = lipgloss.ANSIColor(8) // selection background
+	ColorSuccess   lipgloss.TerminalColor = lipgloss.ANSIColor(2) // green
+	ColorError     lipgloss.TerminalColor = lipgloss.ANSIColor(1) // red
 
 	// List tag colors (rotate through these)
-	ListColors = []lipgloss.Color{
-		lipgloss.Color("#bb9af7"), // purple
-		lipgloss.Color("#7aa2f7"), // blue
-		lipgloss.Color("#2ac3de"), // cyan
-		lipgloss.Color("#9ece6a"), // green
-		lipgloss.Color("#e0af68"), // amber
-		lipgloss.Color("#ff9e64"), // orange
+	ListColors = []lipgloss.TerminalColor{
+		lipgloss.ANSIColor(5), // magenta
+		lipgloss.ANSIColor(4), // blue
+		lipgloss.ANSIColor(6), // cyan
+		lipgloss.ANSIColor(2), // green
+		lipgloss.ANSIColor(3), // yellow
+		lipgloss.ANSIColor(9), // bright red
 	}
 )
 
@@ -128,6 +129,19 @@ var (
 	InputStyle = lipgloss.NewStyle().
 			Foreground(ColorFg)
 
+	// Floating add/edit form
+	FormBoxStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(ColorAccentDim).
+			Padding(0, 1)
+
+	FormTitleStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(ColorAccent)
+
+	FormDoneFieldStyle = lipgloss.NewStyle().
+				Foreground(ColorFgDim)
+
 	// Help overlay
 	HelpKeyStyle = lipgloss.NewStyle().
 			Foreground(ColorAccent).
@@ -153,7 +167,7 @@ var (
 )
 
 // ListTagColor returns a consistent color for a list name.
-func ListTagColor(listName string) lipgloss.Color {
+func ListTagColor(listName string) lipgloss.TerminalColor {
 	h := 0
 	for _, c := range listName {
 		h = h*31 + int(c)

@@ -22,10 +22,13 @@ Requires `remindctl` in `~/.local/bin/` or on your `PATH`.
 
 | Key | View | Description |
 |-----|------|-------------|
-| `1` | Today | Due today + overdue, grouped |
-| `2` | Upcoming | Next 7 days, grouped by date |
-| `3` | Lists | Grouped by list name |
-| `4` | All | Flat list, sorted by urgency |
+| `1` | This Week | Overdue, due this week, or tagged `#thisweek`, grouped by list. New reminders are auto-tagged `#thisweek`. |
+| `2` | Today | Due today + overdue, grouped |
+| `3` | Upcoming | Next 7 days, grouped by date |
+| `4` | Lists | Grouped by list name |
+| `5` | All | Flat list, sorted by urgency |
+
+Reminders with notes (including any attached URL, which `remindctl` stores in notes) show their notes wrapped beneath the title.
 
 ## Keybinds
 
@@ -36,7 +39,7 @@ Requires `remindctl` in `~/.local/bin/` or on your `PATH`.
 | `a` | Add new reminder |
 | `e` | Edit selected reminder |
 | `d` | Delete (with confirmation) |
-| `Tab` / `1-4` | Switch views |
+| `Tab` / `1-5` | Switch views |
 | `/` | Search / filter |
 | `r` | Refresh data |
 | `?` | Help overlay |
