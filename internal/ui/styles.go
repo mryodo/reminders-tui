@@ -164,6 +164,26 @@ var (
 	ConfirmStyle = lipgloss.NewStyle().
 			Foreground(ColorError).
 			Bold(true)
+
+	// Today's Events frame
+	EventsFrameStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(ColorAccentDim).
+				Padding(0, 1)
+
+	EventsFrameTitleStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(ColorAccent)
+
+	EventTimeStyle = lipgloss.NewStyle().
+			Foreground(ColorFgMuted)
+
+	EventAllDayStyle = lipgloss.NewStyle().
+				Foreground(ColorFgDim)
+
+	EventLocationStyle = lipgloss.NewStyle().
+				Foreground(ColorFgDim).
+				Italic(true)
 )
 
 // ListTagColor returns a consistent color for a list name.

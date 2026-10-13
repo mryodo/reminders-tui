@@ -135,7 +135,7 @@ func (c *Client) Add(title, list, due, priority, notes string) error {
 		args = append(args, "--list", list)
 	}
 	if due != "" {
-		args = append(args, "--due", due)
+		args = append(args, "--due", NormalizeDue(due, time.Now()))
 	}
 	if priority != "" && priority != "none" {
 		args = append(args, "--priority", priority)
@@ -154,7 +154,7 @@ func (c *Client) Edit(idPrefix string, title, due, priority, notes string) error
 		args = append(args, "--title", title)
 	}
 	if due != "" {
-		args = append(args, "--due", due)
+		args = append(args, "--due", NormalizeDue(due, time.Now()))
 	}
 	if priority != "" {
 		args = append(args, "--priority", priority)

@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/nodeselector/reminders-tui/internal/icalbuddy"
 	"github.com/nodeselector/reminders-tui/internal/remindctl"
 	"github.com/nodeselector/reminders-tui/internal/ui"
 )
@@ -38,7 +40,7 @@ const numViews = 8
 // Reminders.app list titles (including their symbol prefixes) shown as
 // sections in the corresponding views.
 var teachingLists = []string{"♨︎ Statistics", "✾ I2CN", "✒︎ Thesis", "⛵︎ Seminar", "⛲︎ DPN"}
-var researchLists = []string{"☋ Grassman Interpolation", "⚔︎ Joint Sparsification", "⚖︎ Effective Resistances"}
+var researchLists = []string{"☋ Grassman Interpolation", "⚔︎ Joint Sparsification", "⚖︎ Effective Resistances", "⛽︎ GNN convergence"}
 var habitsLists = []string{"Habits"}
 var tasksLists = []string{"✍︎ Tasks"}
 
@@ -94,8 +96,9 @@ const (
 	ModeNormal Mode = iota
 	ModeLoading
 	ModeSearch
+	ModeInsert // vim-like single-line quick add
 	ModeAdd
-	ModeAddField    // cycling through optional add fields
+	ModeAddField // cycling through optional add fields
 	ModeEdit
 	ModeEditField
 	ModeConfirmDelete
@@ -107,13 +110,27 @@ type displayItem struct {
 	isHeader bool
 	header   string
 	overdue  bool // for group header styling
-	reminder remindctl.Reminder
-	index    int // index into filtered reminders (only for non-headers)
+	// sectionList is the reminders-list name this header groups by, set only
+	// for headers that represent an actual list (as opposed to headers like
+	// "Overdue" or a date label). Used by insert mode to auto-fill the list
+	// for a new task when the cursor is inside that section.
+	sectionList string
+	reminder    remindctl.Reminder
+	index       int // index into filtered reminders (only for non-headers)
 }
 
 // Model is the top-level Bubble Tea model.
 type Model struct {
 	client *remindctl.Client
+
+	// Calendar (Today's Events frame). calClient is nil, or Available()
+	// returns false, when icalBuddy isn't installed -- the frame is simply
+	// omitted in that case.
+	calClient    *icalbuddy.Client
+	calAvailable bool
+	calLoading   bool
+	calExpanded  bool // show all events instead of capping at maxEventsShown
+	events       []icalbuddy.Event
 
 	// Data
 	reminders []remindctl.Reminder
@@ -127,9 +144,18 @@ type Model struct {
 	width        int
 	height       int
 
+	// notesShowAll controls whether reminder notes are shown under every
+	// item in the list, or only under the currently selected one. Toggled
+	// with 'n'.
+	notesShowAll bool
+
 	// Search
 	searchInput textinput.Model
 	searchQuery string
+
+	// Insert mode (vim-like single-line quick add)
+	insertInput textinput.Model
+	insertList  string // list auto-filled from the cursor's current section, if any
 
 	// Add mode
 	addInput    textinput.Model
@@ -180,11 +206,15 @@ type (
 		msg string
 		err error
 	}
-	statusTickMsg struct{}
+	statusTickMsg   struct{}
+	eventsLoadedMsg struct {
+		events []icalbuddy.Event
+		err    error
+	}
 )
 
 // New creates a new model.
-func New(client *remindctl.Client) Model {
+func New(client *remindctl.Client, calClient *icalbuddy.Client) Model {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = ui.SpinnerStyle
@@ -192,6 +222,10 @@ func New(client *remindctl.Client) Model {
 	si := textinput.New()
 	si.Placeholder = "search..."
 	si.CharLimit = 100
+
+	ii := textinput.New()
+	ii.Placeholder = "new task -- @list !priority ~due #tag"
+	ii.CharLimit = 300
 
 	ai := textinput.New()
 	ai.Placeholder = "reminder title"
@@ -202,18 +236,25 @@ func New(client *remindctl.Client) Model {
 
 	na := newNotesArea()
 
+	calAvailable := calClient != nil && calClient.Available()
+
 	return Model{
-		client:      client,
-		view:        ViewThisWeek,
-		mode:        ModeLoading,
-		loading:     true,
-		spinner:     s,
-		searchInput: si,
-		addInput:    ai,
-		editInput:   ei,
-		notesArea:   na,
-		width:       80,
-		height:      24,
+		client:       client,
+		calClient:    calClient,
+		calAvailable: calAvailable,
+		calLoading:   calAvailable,
+		view:         ViewThisWeek,
+		mode:         ModeLoading,
+		loading:      true,
+		spinner:      s,
+		searchInput:  si,
+		insertInput:  ii,
+		addInput:     ai,
+		editInput:    ei,
+		notesArea:    na,
+		width:        80,
+		height:       24,
+		notesShowAll: true,
 	}
 }
 
@@ -245,7 +286,11 @@ func newNotesArea() textarea.Model {
 
 // Init starts the initial data load.
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, m.loadData())
+	cmds := []tea.Cmd{m.spinner.Tick, m.loadData()}
+	if m.calAvailable {
+		cmds = append(cmds, m.loadEvents())
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m Model) loadData() tea.Cmd {
@@ -259,6 +304,17 @@ func (m Model) loadData() tea.Cmd {
 			return remindersLoadedMsg{reminders: reminders, err: err}
 		}
 		return remindersLoadedMsg{reminders: reminders, lists: lists}
+	}
+}
+
+// loadEvents fetches today's calendar events via icalBuddy. Errors are
+// reported through eventsLoadedMsg but don't block or clear the reminders
+// view -- the events frame just stays empty.
+func (m Model) loadEvents() tea.Cmd {
+	calClient := m.calClient
+	return func() tea.Msg {
+		events, err := calClient.TodayEvents(time.Now())
+		return eventsLoadedMsg{events: events, err: err}
 	}
 }
 
@@ -320,6 +376,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		return m, tea.Batch(statusTickCmd(), m.loadData(), m.spinner.Tick)
 
+	case eventsLoadedMsg:
+		m.calLoading = false
+		if msg.err == nil {
+			m.events = msg.events
+		}
+		return m, nil
+
 	case statusTickMsg:
 		if m.statusTimer > 0 {
 			m.statusTimer--
@@ -336,6 +399,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.mode {
 	case ModeSearch:
 		return m.updateSearch(msg)
+	case ModeInsert:
+		return m.updateInsert(msg)
 	case ModeAdd:
 		return m.updateAdd(msg)
 	case ModeAddField:
@@ -367,6 +432,8 @@ func (m Model) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.completeSelected()
 		case key.Matches(msg, keys.Add):
 			return m.enterAddMode()
+		case key.Matches(msg, keys.Insert):
+			return m.enterInsertMode()
 		case key.Matches(msg, keys.Edit):
 			return m.enterEditMode()
 		case key.Matches(msg, keys.Delete):
@@ -376,7 +443,18 @@ func (m Model) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, keys.Refresh):
 			m.loading = true
 			m.mode = ModeLoading
-			return m, tea.Batch(m.loadData(), m.spinner.Tick)
+			cmds := []tea.Cmd{m.loadData(), m.spinner.Tick}
+			if m.calAvailable {
+				m.calLoading = true
+				cmds = append(cmds, m.loadEvents())
+			}
+			return m, tea.Batch(cmds...)
+		case key.Matches(msg, keys.Calendar):
+			if m.calAvailable {
+				m.calExpanded = !m.calExpanded
+			}
+		case key.Matches(msg, keys.Notes):
+			m.notesShowAll = !m.notesShowAll
 		case key.Matches(msg, keys.Help):
 			m.mode = ModeHelp
 		case key.Matches(msg, keys.Tab):
@@ -471,6 +549,130 @@ func (m Model) completeSelected() (tea.Model, tea.Cmd) {
 	}
 }
 
+// currentSectionList returns the reminders-list name for the section the
+// cursor currently sits in (its nearest header at or above the cursor, if
+// that header represents an actual list rather than a synthetic group like
+// "Overdue" or a date label). Returns "" if the cursor isn't inside a list
+// section.
+func (m Model) currentSectionList() string {
+	for i := m.cursor; i >= 0 && i < len(m.displayItems); i-- {
+		if m.displayItems[i].isHeader {
+			return m.displayItems[i].sectionList
+		}
+	}
+	return ""
+}
+
+// insertFields holds the parsed result of a vim-like quick-add line.
+type insertFields struct {
+	title    string
+	list     string
+	priority string
+	due      string
+	notes    string
+}
+
+// insertTokenRe matches the inline field tokens recognized by insert mode:
+// @list, !priority, ~due, and #tag. A value may be quoted to include spaces,
+// e.g. ~"next monday".
+var insertTokenRe = regexp.MustCompile(`(@|!|~|#)(?:"([^"]*)"|(\S+))`)
+
+// parseInsertLine extracts @list, !priority, ~due, and #tag tokens from a
+// quick-add line, stripping them out to form the title. Any #tags are joined
+// into notes so features like the This Week view's #thisweek tag keep
+// working; if the user gave no tags at all, notes default to #thisweek to
+// match the same default the step-by-step add form prefills.
+func parseInsertLine(line string) insertFields {
+	var f insertFields
+	var tags []string
+
+	title := insertTokenRe.ReplaceAllStringFunc(line, func(match string) string {
+		sub := insertTokenRe.FindStringSubmatch(match)
+		value := sub[2]
+		if value == "" {
+			value = sub[3]
+		}
+		switch sub[1] {
+		case "@":
+			f.list = value
+		case "!":
+			f.priority = value
+		case "~":
+			f.due = value
+		case "#":
+			tags = append(tags, "#"+value)
+		}
+		return ""
+	})
+
+	f.title = strings.Join(strings.Fields(title), " ")
+	if len(tags) > 0 {
+		f.notes = strings.Join(tags, " ")
+	} else {
+		f.notes = thisWeekTag
+	}
+	return f
+}
+
+func (m Model) enterInsertMode() (tea.Model, tea.Cmd) {
+	m.mode = ModeInsert
+	m.insertList = m.currentSectionList()
+	m.insertInput.SetValue("")
+	if m.insertList != "" {
+		m.insertInput.Placeholder = fmt.Sprintf("new task in %s -- @list !priority ~due #tag", m.insertList)
+	} else {
+		m.insertInput.Placeholder = "new task -- @list !priority ~due #tag"
+	}
+	m.insertInput.Focus()
+	return m, m.insertInput.Cursor.BlinkCmd()
+}
+
+func (m Model) updateInsert(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch {
+		case key.Matches(msg, keys.Escape):
+			m.mode = ModeNormal
+			m.insertInput.Blur()
+			return m, nil
+		case key.Matches(msg, keys.Enter):
+			line := strings.TrimSpace(m.insertInput.Value())
+			if line == "" {
+				return m, nil
+			}
+			fields := parseInsertLine(line)
+			if fields.title == "" {
+				return m, nil
+			}
+			if fields.list == "" {
+				fields.list = m.insertList
+			}
+			m.insertInput.Blur()
+			m.mode = ModeNormal
+			return m, m.doInsertAdd(fields)
+		}
+	}
+	var cmd tea.Cmd
+	m.insertInput, cmd = m.insertInput.Update(msg)
+	return m, cmd
+}
+
+func (m Model) doInsertAdd(fields insertFields) tea.Cmd {
+	client := m.client
+	title := fields.title
+	list := fields.list
+	due := fields.due
+	priority := fields.priority
+	notes := fields.notes
+	return func() tea.Msg {
+		err := client.Add(title, list, due, priority, notes)
+		if err != nil {
+			return actionDoneMsg{err: err}
+		}
+		return actionDoneMsg{msg: fmt.Sprintf("Added: %s", ui.Truncate(title, 40))}
+	}
+}
+
 func (m Model) enterAddMode() (tea.Model, tea.Cmd) {
 	m.mode = ModeAdd
 	m.addTitle = ""
@@ -529,7 +731,7 @@ func (m Model) updateAddField(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.addList = val
 				m.addStep = 2
 				m.addInput.SetValue("")
-				m.addInput.Placeholder = "due date (enter to skip)"
+				m.addInput.Placeholder = "due date, e.g. friday, tomorrow 14:00 (enter to skip)"
 				return m, nil
 			case 2: // due
 				m.addDue = val
@@ -622,7 +824,7 @@ func (m Model) updateEdit(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.editStep = 1
 			m.mode = ModeEditField
 			m.editInput.SetValue("")
-			m.editInput.Placeholder = "due date (enter to skip)"
+			m.editInput.Placeholder = "due date, e.g. friday, tomorrow 14:00 (enter to skip)"
 			return m, nil
 		}
 	}
@@ -985,8 +1187,9 @@ func (m *Model) buildListsItems(reminders []remindctl.Reminder) []displayItem {
 		g := groupMap[name]
 		sortByPriority(g.reminders)
 		items = append(items, displayItem{
-			isHeader: true,
-			header:   fmt.Sprintf("  %s (%d)", name, len(g.reminders)),
+			isHeader:    true,
+			header:      fmt.Sprintf("  %s (%d)", name, len(g.reminders)),
+			sectionList: name,
 		})
 		for _, r := range g.reminders {
 			items = append(items, displayItem{reminder: r})
@@ -1011,8 +1214,9 @@ func (m *Model) buildListGroupItems(reminders []remindctl.Reminder, listNames []
 		}
 		sortByPriority(g)
 		items = append(items, displayItem{
-			isHeader: true,
-			header:   fmt.Sprintf("  %s (%d)", name, len(g)),
+			isHeader:    true,
+			header:      fmt.Sprintf("  %s (%d)", name, len(g)),
+			sectionList: name,
 		})
 		for _, r := range g {
 			items = append(items, displayItem{reminder: r})
@@ -1077,8 +1281,9 @@ func (m *Model) buildThisWeekItems(reminders []remindctl.Reminder, now time.Time
 		g := groupMap[name]
 		sortByPriority(g.reminders)
 		items = append(items, displayItem{
-			isHeader: true,
-			header:   fmt.Sprintf("  %s (%d)", name, len(g.reminders)),
+			isHeader:    true,
+			header:      fmt.Sprintf("  %s (%d)", name, len(g.reminders)),
+			sectionList: name,
 		})
 		for _, r := range g.reminders {
 			items = append(items, displayItem{reminder: r})
@@ -1103,24 +1308,32 @@ func (m Model) View() string {
 
 	var b strings.Builder
 
+	// Today's Events frame sits above every view.
+	if frame := m.renderEventsFrame(); frame != "" {
+		b.WriteString(frame)
+		b.WriteString("\n")
+	}
+
 	// Header
 	b.WriteString(m.renderHeader())
 	b.WriteString("\n")
 
 	// Tab bar
 	b.WriteString(m.renderTabBar())
-	b.WriteString("\n\n")
+	b.WriteString("\n")
 
 	// Main content
 	if m.loading && len(m.reminders) == 0 {
 		b.WriteString("  " + m.spinner.View() + " Loading reminders...")
 	} else if m.mode == ModeHelp {
-		b.WriteString(m.renderHelp())
+		b.WriteString(strings.TrimRight(m.renderHelp(), "\n"))
 	} else {
-		b.WriteString(m.renderList())
+		b.WriteString(strings.TrimRight(m.renderList(), "\n"))
 	}
 
-	// Inline bars (search/delete) stay right under the content.
+	// Inline bars (search/delete) stay right under the content. Insert
+	// mode's bar is rendered inline under the cursor row instead, by
+	// renderList itself, so it isn't repeated here.
 	if m.mode == ModeSearch {
 		b.WriteString("\n")
 		b.WriteString(m.renderSearchBar())
@@ -1129,36 +1342,18 @@ func (m Model) View() string {
 		b.WriteString(m.renderDeleteConfirm())
 	}
 
-	// The add/edit form is a floating box anchored just above the status
-	// bar, regardless of how much list content is above it.
-	var floating string
-	if m.mode == ModeAdd || m.mode == ModeAddField {
-		floating = m.renderAddBar()
-	} else if m.mode == ModeEdit || m.mode == ModeEditField {
-		floating = m.renderEditBar()
+	// Form and status bar are anchored to the bottom; pad only when the
+	// content is shorter than the screen (renderList fills it otherwise).
+	bottom := "\n" + m.renderStatusBar() // blank line above the status bar
+	if form := m.renderForm(); form != "" {
+		bottom = form + "\n" + bottom
 	}
-
-	// Pad to fill height, leaving room for the floating box if present.
-	lines := strings.Count(b.String(), "\n")
-	fillTo := m.height - 2
-	if floating != "" {
-		fillTo -= strings.Count(floating, "\n") + 2 // separator line + box + line before status bar
-	}
-	if fillTo < lines {
-		fillTo = lines
-	}
-	for i := lines; i < fillTo; i++ {
+	lines := strings.Count(b.String(), "\n") + 1
+	for i := lines + strings.Count(bottom, "\n") + 1; i < m.height; i++ {
 		b.WriteString("\n")
 	}
-
-	if floating != "" {
-		b.WriteString("\n")
-		b.WriteString(floating)
-		b.WriteString("\n")
-	}
-
-	// Status bar
-	b.WriteString(m.renderStatusBar())
+	b.WriteString("\n")
+	b.WriteString(bottom)
 
 	return indentLines(b.String(), 1)
 }
@@ -1172,6 +1367,76 @@ func indentLines(s string, n int) string {
 		lines[i] = pad + l
 	}
 	return strings.Join(lines, "\n")
+}
+
+// maxEventsShown caps how many events the Today's Events frame displays
+// before summarizing the rest, so it doesn't crowd out list content on
+// short terminals.
+const maxEventsShown = 4
+
+// renderEventsFrame renders the "Today's Events" frame shown above every
+// view. It returns "" when icalBuddy isn't installed, so the app looks and
+// behaves exactly as it did before this feature existed.
+func (m Model) renderEventsFrame() string {
+	if !m.calAvailable {
+		return ""
+	}
+
+	var lines []string
+	title := "Today's Events"
+	switch {
+	case m.calLoading && len(m.events) == 0:
+		lines = append(lines, ui.EventAllDayStyle.Render("loading..."))
+	case len(m.events) == 0:
+		lines = append(lines, ui.EventAllDayStyle.Render("No events today"))
+	default:
+		shown := m.events
+		more := 0
+		if !m.calExpanded && len(shown) > maxEventsShown {
+			more = len(shown) - maxEventsShown
+			shown = shown[:maxEventsShown]
+		}
+		for _, ev := range shown {
+			lines = append(lines, m.renderEventLine(ev))
+		}
+		if more > 0 {
+			lines = append(lines, ui.EventAllDayStyle.Render(fmt.Sprintf("+%d more (c to expand)", more)))
+		} else if m.calExpanded && len(m.events) > maxEventsShown {
+			title += " (c to collapse)"
+		}
+	}
+
+	var body strings.Builder
+	body.WriteString(ui.EventsFrameTitleStyle.Render(title))
+	for _, l := range lines {
+		body.WriteString("\n")
+		body.WriteString(l)
+	}
+
+	return ui.EventsFrameStyle.Width(m.formBoxWidth()).Render(body.String())
+}
+
+// renderEventLine renders one calendar event as a single line: its time
+// range (or "all day"), title, and location if present.
+func (m Model) renderEventLine(ev icalbuddy.Event) string {
+	var when string
+	if ev.AllDay {
+		when = ui.EventAllDayStyle.Render("all day")
+	} else {
+		when = ui.EventTimeStyle.Render(ev.Start.Format("15:04") + "-" + ev.End.Format("15:04"))
+	}
+
+	titleWidth := m.formContentWidth() - lipgloss.Width(when) - 1
+	if titleWidth < 10 {
+		titleWidth = 10
+	}
+	title := ui.Truncate(ev.Title, titleWidth)
+
+	line := when + " " + title
+	if ev.Location != "" {
+		line += ui.EventLocationStyle.Render(" @ " + ev.Location)
+	}
+	return line
 }
 
 func (m Model) renderHeader() string {
@@ -1278,14 +1543,31 @@ func (m Model) renderList() string {
 		if m.searchQuery != "" {
 			msg = fmt.Sprintf("No results for %q", m.searchQuery)
 		}
-		return "  " + ui.CountStyle.Render(msg)
+		empty := "  " + ui.CountStyle.Render(msg)
+		if m.mode == ModeInsert {
+			empty += "\n" + m.renderInsertBar()
+		}
+		return empty
 	}
 
 	// Available terminal lines for content. The tab bar may wrap onto more
 	// than one line on narrow terminals, so its height is measured rather
-	// than assumed.
+	// than assumed. The events frame, when present, also eats into the
+	// budget.
 	tabBarHeight := strings.Count(m.renderTabBar(), "\n") + 1
-	maxVisible := m.height - 7 - tabBarHeight // header + tabs + status + padding
+	eventsFrameHeight := 0
+	if frame := m.renderEventsFrame(); frame != "" {
+		eventsFrameHeight = strings.Count(frame, "\n") + 1 // frame lines + the newline after it
+	}
+	formHeight := 0
+	if form := m.renderForm(); form != "" {
+		formHeight = strings.Count(form, "\n") + 1
+	}
+	barHeight := 0
+	if m.mode == ModeSearch || m.mode == ModeConfirmDelete {
+		barHeight = 1
+	}
+	maxVisible := m.height - 3 - tabBarHeight - eventsFrameHeight - formHeight - barHeight // header + blank + status
 	if maxVisible < 5 {
 		maxVisible = 5
 	}
@@ -1309,10 +1591,19 @@ func (m Model) renderList() string {
 		}
 
 		lines := strings.Split(m.renderReminder(item.reminder, now, i == m.cursor), "\n")
-		if notes := m.renderNotes(item.reminder); notes != "" {
-			lines = append(lines, strings.Split(notes, "\n")...)
+		if m.notesShowAll || i == m.cursor {
+			if notes := m.renderNotes(item.reminder); notes != "" {
+				lines = append(lines, strings.Split(notes, "\n")...)
+			}
 		}
 		itemBlocks[i] = lines
+	}
+
+	// Insert mode's quick-add bar renders as an extra line right under the
+	// cursor's row, rather than pinned to the bottom of the content, so it
+	// reads like opening a new line below the current one.
+	if m.mode == ModeInsert && m.cursor >= 0 && m.cursor < len(itemBlocks) {
+		itemBlocks[m.cursor] = append(itemBlocks[m.cursor], m.renderInsertBar())
 	}
 
 	itemLines := make([]int, len(itemBlocks))
@@ -1330,6 +1621,23 @@ func (m Model) renderList() string {
 	if end == start && start < len(itemLines) {
 		end = start + 1 // always show at least the cursor item, even if it alone overflows the budget
 	}
+	// Never end the visible window on a header with none of its items shown
+	// below it -- that leaves an orphaned section title floating above dead
+	// space. Trim it so the reclaimed room goes toward showing more of the
+	// next item instead.
+	for end > start+1 && end < len(itemLines) && m.displayItems[end-1].isHeader {
+		end--
+		used -= itemLines[end]
+	}
+
+	// If the next item doesn't fully fit in what's left of the budget, show
+	// as much of it as does fit instead of leaving that room blank -- a
+	// reminder clipped mid-line still reads as "there's more, scroll down"
+	// rather than vanishing outright.
+	var partial []string
+	if remaining := maxVisible - used; remaining > 0 && end < len(itemLines) && !m.displayItems[end].isHeader {
+		partial = itemBlocks[end][:remaining]
+	}
 
 	var b strings.Builder
 	for i := start; i < end; i++ {
@@ -1337,6 +1645,10 @@ func (m Model) renderList() string {
 			b.WriteString(line)
 			b.WriteString("\n")
 		}
+	}
+	for _, line := range partial {
+		b.WriteString(line)
+		b.WriteString("\n")
 	}
 
 	return b.String()
@@ -1359,11 +1671,36 @@ func windowStart(itemLines []int, cursor, maxVisible int) int {
 	return start
 }
 
+// thisWeekTagRe matches the #thisweek tag on its own, for stripping it out
+// of displayed notes -- it's an internal marker, not something the user
+// wrote to be read.
+var thisWeekTagRe = regexp.MustCompile(`(?i)#thisweek\b`)
+
+// stripThisWeekTag removes the #thisweek tag from notes text. A line that
+// contains only the tag is dropped entirely; a line with other content
+// keeps that content with the tag removed and spacing normalized.
+func stripThisWeekTag(notes string) string {
+	lines := strings.Split(notes, "\n")
+	out := lines[:0]
+	for _, line := range lines {
+		if !thisWeekTagRe.MatchString(line) {
+			out = append(out, line)
+			continue
+		}
+		cleaned := strings.Join(strings.Fields(thisWeekTagRe.ReplaceAllString(line, "")), " ")
+		if cleaned != "" {
+			out = append(out, cleaned)
+		}
+	}
+	return strings.TrimSpace(strings.Join(out, "\n"))
+}
+
 // renderNotes renders a reminder's notes (which is also where remindctl
 // stores any attached URL) wrapped to the terminal width and indented under
-// the reminder's line.
+// the reminder's line. The #thisweek tag is stripped since it's an internal
+// marker for the This Week view, not user-facing content.
 func (m Model) renderNotes(r remindctl.Reminder) string {
-	notes := strings.TrimSpace(r.Notes)
+	notes := stripThisWeekTag(strings.TrimSpace(r.Notes))
 	if notes == "" {
 		return ""
 	}
@@ -1464,6 +1801,14 @@ func (m Model) renderReminder(r remindctl.Reminder, now time.Time, selected bool
 func (m Model) renderSearchBar() string {
 	label := ui.InputLabelStyle.Render("  / ")
 	return label + m.searchInput.View()
+}
+
+func (m Model) renderInsertBar() string {
+	label := "  i "
+	if m.insertList != "" {
+		label = fmt.Sprintf("  i [%s] ", ui.Truncate(m.insertList, 24))
+	}
+	return ui.InputLabelStyle.Render(label) + m.insertInput.View()
 }
 
 func (m Model) renderAddBar() string {
@@ -1588,7 +1933,8 @@ func (m Model) renderHelp() string {
 	}{
 		{"j/k", "navigate up/down"},
 		{"x/space", "complete reminder"},
-		{"a", "add new reminder"},
+		{"a", "add new reminder (step-by-step)"},
+		{"i", "quick add: title @list !priority ~due #tag"},
 		{"e", "edit selected reminder"},
 		{"d", "delete with confirmation"},
 		{"1-8", "switch view (This Week/Today/Upcoming/Lists/Teaching/Research/Habits/Tasks)"},
@@ -1600,6 +1946,10 @@ func (m Model) renderHelp() string {
 		{"Esc", "cancel current action"},
 		{"shift+enter", "line break in notes field (or ctrl+j/alt+enter)"},
 	}
+	if m.calAvailable {
+		bindings = append(bindings, struct{ key, desc string }{"c", "expand/collapse today's events"})
+	}
+	bindings = append(bindings, struct{ key, desc string }{"n", "toggle notes: all reminders / selected only"})
 
 	var b strings.Builder
 	b.WriteString("  ")
@@ -1615,6 +1965,17 @@ func (m Model) renderHelp() string {
 	return b.String()
 }
 
+// renderForm returns the add/edit form box, or "" when no form is open.
+func (m Model) renderForm() string {
+	switch m.mode {
+	case ModeAdd, ModeAddField:
+		return m.renderAddBar()
+	case ModeEdit, ModeEditField:
+		return m.renderEditBar()
+	}
+	return ""
+}
+
 func (m Model) renderStatusBar() string {
 	if m.statusMsg != "" {
 		if m.statusErr {
@@ -1624,7 +1985,7 @@ func (m Model) renderStatusBar() string {
 	}
 
 	// Show keybind hints
-	hints := "  j/k navigate  x complete  a add  e edit  d delete  / search  ? help  q quit"
+	hints := "  j/k navigate  x complete  i quick add  a add  e edit  d delete  / search  ? help  q quit"
 	if m.loading {
 		hints = "  " + m.spinner.View() + " refreshing..."
 	}

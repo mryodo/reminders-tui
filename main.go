@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/nodeselector/reminders-tui/internal/icalbuddy"
 	"github.com/nodeselector/reminders-tui/internal/model"
 	"github.com/nodeselector/reminders-tui/internal/remindctl"
 )
@@ -23,7 +24,8 @@ func main() {
 	}
 
 	client := remindctl.New(bin)
-	m := model.New(client)
+	calClient := icalbuddy.New("")
+	m := model.New(client, calClient)
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {

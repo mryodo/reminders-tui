@@ -7,10 +7,13 @@ type keyMap struct {
 	Down     key.Binding
 	Complete key.Binding
 	Add      key.Binding
+	Insert   key.Binding
 	Edit     key.Binding
 	Delete   key.Binding
 	Search   key.Binding
 	Refresh  key.Binding
+	Calendar key.Binding
+	Notes    key.Binding
 	Quit     key.Binding
 	Help     key.Binding
 	Tab      key.Binding
@@ -43,6 +46,10 @@ var keys = keyMap{
 		key.WithKeys("a"),
 		key.WithHelp("a", "add"),
 	),
+	Insert: key.NewBinding(
+		key.WithKeys("i"),
+		key.WithHelp("i", "quick add"),
+	),
 	Edit: key.NewBinding(
 		key.WithKeys("e"),
 		key.WithHelp("e", "edit"),
@@ -58,6 +65,14 @@ var keys = keyMap{
 	Refresh: key.NewBinding(
 		key.WithKeys("r"),
 		key.WithHelp("r", "refresh"),
+	),
+	Calendar: key.NewBinding(
+		key.WithKeys("c"),
+		key.WithHelp("c", "toggle events"),
+	),
+	Notes: key.NewBinding(
+		key.WithKeys("n"),
+		key.WithHelp("n", "toggle notes (all/selected)"),
 	),
 	Quit: key.NewBinding(
 		key.WithKeys("q"),
