@@ -53,14 +53,23 @@ func (c *Client) Available() bool {
 // TodayEvents returns today's calendar events, sorted with all-day events
 // first, then timed events in start order.
 func (c *Client) TodayEvents(now time.Time) ([]Event, error) {
+	return c.EventsOn(now)
+}
+
+// EventsOn returns the calendar events on day's date, sorted like
+// TodayEvents. -nrd and an empty -df strip the date from the datetime
+// field, so the output parses exactly like eventsToday.
+func (c *Client) EventsOn(day time.Time) ([]Event, error) {
+	date := day.Format("2006-01-02")
 	out, err := exec.Command(c.bin,
-		"-nc", "-npn",
+		"-nc", "-npn", "-nrd",
+		"-df", "",
 		"-tf", "%H:%M",
 		"-iep", "datetime,title,location",
 		"-po", "datetime,title,location",
 		"-b", bullet,
 		"-ps", "|"+fieldSep+"|",
-		"eventsToday",
+		"eventsFrom:"+date, "to:"+date,
 	).Output()
 	if err != nil {
 		var exitErr *exec.ExitError
@@ -69,7 +78,7 @@ func (c *Client) TodayEvents(now time.Time) ([]Event, error) {
 		}
 		return nil, err
 	}
-	return parseEvents(string(out), now), nil
+	return parseEvents(string(out), day), nil
 }
 
 // timeRangeRe matches icalBuddy's "-tf %H:%M" time range, e.g. "09:00 - 10:30".
