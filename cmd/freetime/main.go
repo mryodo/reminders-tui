@@ -7,7 +7,15 @@ import (
 	"os"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/nodeselector/reminders-tui/internal/icalbuddy"
+)
+
+// ANSI palette indices, so output follows the terminal's color scheme.
+var (
+	dayStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("4"))
+	timeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	durStyle  = lipgloss.NewStyle().Faint(true)
 )
 
 type slot struct{ start, end time.Time }
@@ -65,9 +73,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		fmt.Println(day.Format("Mon 02 Jan"))
+		fmt.Println(dayStyle.Render(day.Format("Mon 02 Jan")))
 		for _, s := range freeSlots(events, from, to) {
-			fmt.Printf("  %s - %s  (%s)\n", s.start.Format("15:04"), s.end.Format("15:04"), s.end.Sub(s.start))
+			fmt.Printf("  %s  %s\n",
+				timeStyle.Render(s.start.Format("15:04")+" - "+s.end.Format("15:04")),
+				durStyle.Render("("+s.end.Sub(s.start).String()+")"))
 		}
 	}
 }
