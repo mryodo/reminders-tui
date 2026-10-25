@@ -376,6 +376,18 @@ func parseEvents(_ out: String, _ on: Date) -> [Event] {
     var blur = UserDefaults.standard.object(forKey: "blur") as? Double ?? 10 { // blur radius behind a see-through window
         didSet { UserDefaults.standard.set(blur, forKey: "blur") }
     }
+    var cardPadding = UserDefaults.standard.object(forKey: "cardPadding") as? Double ?? 6 { // inside each section's card
+        didSet { UserDefaults.standard.set(cardPadding, forKey: "cardPadding") }
+    }
+    var sectionTitleSize = UserDefaults.standard.object(forKey: "sectionTitleSize") as? Double ?? 11 { // Overdue, Today, ... over each card
+        didSet { UserDefaults.standard.set(sectionTitleSize, forKey: "sectionTitleSize") }
+    }
+    var cards = UserDefaults.standard.object(forKey: "cards") as? Bool ?? true { // off: sections sit on the paper, no fill or edge
+        didSet { UserDefaults.standard.set(cards, forKey: "cards") }
+    }
+    var glass = UserDefaults.standard.object(forKey: "glass") as? Bool ?? false { // cards in Liquid Glass (macOS 26)
+        didSet { UserDefaults.standard.set(glass, forKey: "glass") }
+    }
     var fontFamily = UserDefaults.standard.string(forKey: "fontFamily") ?? "Maple Mono" {
         didSet {
             fontName = fontFamily
@@ -518,23 +530,27 @@ func parseEvents(_ out: String, _ on: Date) -> [Event] {
 
     func add(_ f: Fields) {
         guard !f.title.isEmpty else { return }
-        var args = ["add", f.title]
+        var args = ["add", value(f.title)]
         args += ["--list", f.list.isEmpty ? defaultList : f.list]
         if !f.due.isEmpty { args += ["--due", normalizeDue(f.due)] }
         if !f.priority.isEmpty && f.priority != "none" { args += ["--priority", f.priority] }
-        if !f.notes.isEmpty { args += ["--notes", f.notes] }
+        if !f.notes.isEmpty { args += ["--notes", value(f.notes)] }
         act(args, "Added: \(f.title)")
     }
 
     /// Changes what differs from r; remindctl can't clear notes or a due date.
     func edit(_ r: Reminder, _ f: Fields) {
         var args = ["edit", r.short]
-        if !f.title.isEmpty && f.title != r.title { args += ["--title", f.title] }
+        if !f.title.isEmpty && f.title != r.title { args += ["--title", value(f.title)] }
         if !f.due.isEmpty { args += ["--due", normalizeDue(f.due)] }
         if f.priority != r.priority { args += ["--priority", f.priority] }
-        if !f.notes.isEmpty && f.notes != (r.notes ?? "") { args += ["--notes", f.notes] }
+        if !f.notes.isEmpty && f.notes != (r.notes ?? "").trimmingCharacters(in: .whitespaces) { args += ["--notes", value(f.notes)] }
         if args.count > 2 { act(args, "Edited: \(f.title)") }
     }
+
+    /// remindctl takes a value starting with "-" for an option ("Missing value
+    /// for option notes"), so such a one goes with a leading space.
+    func value(_ s: String) -> String { s.hasPrefix("-") ? " " + s : s }
 
     /// Adds the quick-add line, into the open section's list unless it says @list.
     func quickAdd(_ line: String) {

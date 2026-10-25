@@ -36,7 +36,7 @@ func field(_ prompt: String, _ text: Binding<String>, _ p: Palette) -> some View
 
 /// a and e: the terminal app's form, docked at the bottom of the window
 /// as it was there. ⏎ goes title → list → due and saves from there (and
-/// from notes, where ⌥⏎ breaks a line); esc cancels.
+/// from notes, where ⇧⏎ breaks a line); esc cancels.
 struct FormPanel: View {
     @Environment(Store.self) var store
     @State var f = Fields()
@@ -60,7 +60,7 @@ struct FormPanel: View {
             HStack {
                 Caps(text: editing == nil ? "New reminder" : "Edit reminder", color: p.accent).fixedSize()
                 Spacer()
-                Caps(text: picking ? "type to filter · ↑↓ choose · ⏎ takes it" : "⏎ next · ⌥⏎ new line · esc cancels", color: p.inkSoft).lineLimit(1) // shortened when narrow
+                Caps(text: picking ? "type to filter · ↑↓ choose · ⏎ takes it" : "⏎ next · ⇧⏎ new line · esc cancels", color: p.inkSoft).lineLimit(1) // shortened when narrow
             }
             plain("Title", $f.title, display(18)).focused($focus, equals: .title)
                 .onSubmit { if editing == nil { focus = .list } else { save() } }
@@ -88,6 +88,11 @@ struct FormPanel: View {
             }
             if picking { suggestions }
             plain("Notes", $f.notes, face(13), lines: 4).focused($focus, equals: .notes).onSubmit(save)
+                .onKeyPress(.return, phases: .down) { k in // ⇧⏎ breaks the line, as ⌥⏎ would (⌥ is taken)
+                    guard k.modifiers.contains(.shift) else { return .ignored }
+                    NSApp.sendAction(#selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)), to: nil, from: nil)
+                    return .handled
+                }
         }
         .padding(.horizontal, 20).padding(.vertical, 16)
         .frame(maxWidth: 820).frame(maxWidth: .infinity)
@@ -416,6 +421,24 @@ struct SettingsView: View {
                     }
                 Text("so ⌥Z quick add is always there").font(face(13)).foregroundStyle(p.inkSoft)
             }
+            section("Cards", p)
+            row("Cards", p) {
+                Toggle("", isOn: $store.cards).toggleStyle(.switch).labelsHidden().tint(p.accent)
+                Text(store.cards ? "each section on its own card" : "sections straight on the paper").font(face(13)).foregroundStyle(p.inkSoft)
+            }
+            row("Padding", p) {
+                Slider(value: $store.cardPadding, in: 0...30).tint(p.accent)
+                Text("\(Int(store.cardPadding)) pt").font(face(13)).foregroundStyle(p.inkSoft).frame(width: 96, alignment: .trailing)
+            }
+            row("Section titles", p) {
+                Slider(value: $store.sectionTitleSize, in: 9...24, step: 1).tint(p.accent)
+                Text("\(Int(store.sectionTitleSize)) pt").font(face(13)).foregroundStyle(p.inkSoft).frame(width: 96, alignment: .trailing)
+            }
+            row("Liquid Glass", p) {
+                Toggle("", isOn: $store.glass).toggleStyle(.switch).labelsHidden().tint(p.accent)
+                Text(store.glass ? "cards in glass" : "solid cards").font(face(13)).foregroundStyle(p.inkSoft)
+            }
+            .disabled(!store.cards)
             section("Today's events", p)
             row("Icons", p) {
                 Toggle("", isOn: $store.eventIcons).toggleStyle(.switch).labelsHidden().tint(p.accent)

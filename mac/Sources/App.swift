@@ -298,7 +298,7 @@ struct GroupView: View {
         let p = store.p
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Caps(text: g.title, color: g.overdue ? p.red : p.accent)
+                Caps(text: g.title, color: g.overdue ? p.red : p.accent, size: store.sectionTitleSize)
                 Spacer()
                 Caps(text: "\(g.items.count)", color: p.inkSoft)
             }
@@ -309,8 +309,8 @@ struct GroupView: View {
                 if store.inserting != nil && store.sel == r.id { QuickAdd() }
             }
         }
-        .padding(.horizontal, 6).padding(.vertical, 6)
-        .modifier(Raised(p: p, alpha: store.opacity))
+        .padding(store.cardPadding)
+        .modifier(Raised(p: p, alpha: store.opacity, shown: store.cards, glass: store.glass))
     }
 }
 

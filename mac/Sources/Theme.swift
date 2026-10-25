@@ -100,8 +100,9 @@ func font(_ family: String, _ size: CGFloat, _ w: Font.Weight) -> Font {
 struct Caps: View {
     let text: String
     var color: Color
+    var size: CGFloat = 11
     var body: some View {
-        Text(text.uppercased()).font(face(11, .semibold)).tracking(1.5).foregroundStyle(color)
+        Text(text.uppercased()).font(face(size, .semibold)).tracking(1.5).foregroundStyle(color)
     }
 }
 
@@ -130,7 +131,14 @@ struct Raised: ViewModifier {
     let p: Palette
     var radius: CGFloat = 24
     var alpha = 1.0 // < 1 lets the window's see-through background show
-    func body(content: Content) -> some View {
+    var shown = true // the cards setting: off, no fill, edge or shadow
+    var glass = false
+    @ViewBuilder func body(content: Content) -> some View {
+        if !shown { content }
+        else if glass, #available(macOS 26, *) { content.glassEffect(.regular, in: RoundedRectangle(cornerRadius: radius)) }
+        else { card(content) }
+    }
+    func card(_ content: Content) -> some View {
         content
             .background(RoundedRectangle(cornerRadius: radius).fill(p.raised.opacity(alpha)))
             .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(p.line))
