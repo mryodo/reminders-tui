@@ -128,6 +128,12 @@ func (c *Client) Complete(idPrefix string) error {
 	return err
 }
 
+// Uncomplete marks a reminder as incomplete by ID prefix.
+func (c *Client) Uncomplete(idPrefix string) error {
+	_, err := c.run("edit", idPrefix, "--incomplete")
+	return err
+}
+
 // Add creates a new reminder.
 func (c *Client) Add(title, list, due, priority, notes string) error {
 	args := []string{"add", title}

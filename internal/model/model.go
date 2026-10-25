@@ -190,6 +190,10 @@ type Model struct {
 	spinner spinner.Model
 	loading bool
 
+	// completed holds reminders completed this session, most recent last,
+	// so 'u' can undo them one at a time.
+	completed []remindctl.Reminder
+
 	// Confirm delete
 	deleteID    string
 	deleteTitle string
@@ -430,6 +434,8 @@ func (m Model) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.moveCursor(1)
 		case key.Matches(msg, keys.Complete):
 			return m.completeSelected()
+		case key.Matches(msg, keys.Undo):
+			return m.undoComplete()
 		case key.Matches(msg, keys.Add):
 			return m.enterAddMode()
 		case key.Matches(msg, keys.Insert):
@@ -537,6 +543,7 @@ func (m Model) completeSelected() (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
+	m.completed = append(m.completed, r)
 	client := m.client
 	idPrefix := r.ID[:8]
 	title := r.Title
@@ -546,6 +553,21 @@ func (m Model) completeSelected() (tea.Model, tea.Cmd) {
 			return actionDoneMsg{err: err}
 		}
 		return actionDoneMsg{msg: fmt.Sprintf("Completed: %s", ui.Truncate(title, 40))}
+	}
+}
+
+func (m Model) undoComplete() (tea.Model, tea.Cmd) {
+	if len(m.completed) == 0 {
+		return m, nil
+	}
+	r := m.completed[len(m.completed)-1]
+	m.completed = m.completed[:len(m.completed)-1]
+	client := m.client
+	return m, func() tea.Msg {
+		if err := client.Uncomplete(r.ID[:8]); err != nil {
+			return actionDoneMsg{err: err}
+		}
+		return actionDoneMsg{msg: fmt.Sprintf("Restored: %s", ui.Truncate(r.Title, 40))}
 	}
 }
 
@@ -1933,6 +1955,7 @@ func (m Model) renderHelp() string {
 	}{
 		{"j/k", "navigate up/down"},
 		{"x/space", "complete reminder"},
+		{"u", "undo last completion"},
 		{"a", "add new reminder (step-by-step)"},
 		{"i", "quick add: title @list !priority ~due #tag"},
 		{"e", "edit selected reminder"},
@@ -1985,7 +2008,7 @@ func (m Model) renderStatusBar() string {
 	}
 
 	// Show keybind hints
-	hints := "  j/k navigate  x complete  i quick add  a add  e edit  d delete  / search  ? help  q quit"
+	hints := "  j/k navigate  x complete  u undo  i quick add  a add  e edit  d delete  / search  ? help  q quit"
 	if m.loading {
 		hints = "  " + m.spinner.View() + " refreshing..."
 	}

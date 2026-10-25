@@ -6,6 +6,7 @@ type keyMap struct {
 	Up       key.Binding
 	Down     key.Binding
 	Complete key.Binding
+	Undo     key.Binding
 	Add      key.Binding
 	Insert   key.Binding
 	Edit     key.Binding
@@ -41,6 +42,10 @@ var keys = keyMap{
 	Complete: key.NewBinding(
 		key.WithKeys("x", " "),
 		key.WithHelp("x/space", "complete"),
+	),
+	Undo: key.NewBinding(
+		key.WithKeys("u"),
+		key.WithHelp("u", "undo complete"),
 	),
 	Add: key.NewBinding(
 		key.WithKeys("a"),
