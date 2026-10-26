@@ -430,6 +430,10 @@ struct SettingsView: View {
                 Slider(value: $store.cardPadding, in: 0...30).tint(p.accent)
                 Text("\(Int(store.cardPadding)) pt").font(face(13)).foregroundStyle(p.inkSoft).frame(width: 96, alignment: .trailing)
             }
+            row("Task spacing", p) {
+                Slider(value: $store.rowSpacing, in: 0...16).tint(p.accent)
+                Text("\(Int(store.rowSpacing)) pt").font(face(13)).foregroundStyle(p.inkSoft).frame(width: 96, alignment: .trailing)
+            }
             row("Section titles", p) {
                 Slider(value: $store.sectionTitleSize, in: 9...24, step: 1).tint(p.accent)
                 Text("\(Int(store.sectionTitleSize)) pt").font(face(13)).foregroundStyle(p.inkSoft).frame(width: 96, alignment: .trailing)

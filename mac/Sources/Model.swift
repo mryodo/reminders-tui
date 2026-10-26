@@ -379,6 +379,9 @@ func parseEvents(_ out: String, _ on: Date) -> [Event] {
     var cardPadding = UserDefaults.standard.object(forKey: "cardPadding") as? Double ?? 6 { // inside each section's card
         didSet { UserDefaults.standard.set(cardPadding, forKey: "cardPadding") }
     }
+    var rowSpacing = UserDefaults.standard.object(forKey: "rowSpacing") as? Double ?? 3 { // above and below each task
+        didSet { UserDefaults.standard.set(rowSpacing, forKey: "rowSpacing") }
+    }
     var sectionTitleSize = UserDefaults.standard.object(forKey: "sectionTitleSize") as? Double ?? 11 { // Overdue, Today, ... over each card
         didSet { UserDefaults.standard.set(sectionTitleSize, forKey: "sectionTitleSize") }
     }

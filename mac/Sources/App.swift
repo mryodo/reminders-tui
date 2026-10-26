@@ -346,7 +346,7 @@ struct Row: View {
                     .padding(.horizontal, 8).padding(.vertical, 2).background(Capsule().fill(p.red))
             }
         }
-        .padding(.horizontal, 10).padding(.vertical, 3)
+        .padding(.horizontal, 10).padding(.vertical, store.rowSpacing)
         .padding(.leading, nested ? 28 : 0) // a subtask, under its parent
         // the selected reminder sits on a soft accent panel
         .background(RoundedRectangle(cornerRadius: 14).fill(on ? p.accent.opacity(0.08) : .clear))
