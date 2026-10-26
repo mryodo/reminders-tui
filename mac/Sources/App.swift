@@ -265,12 +265,9 @@ struct EventsCard: View {
                     Image(systemName: "calendar").font(.system(size: 12, weight: .semibold)).foregroundStyle(c.inkSoft)
                 }
                 Spacer()
-                if all.count > EventsCard.few {
-                    Button(store.eventsOpen ? "Fewer" : "+\(all.count - EventsCard.few) more") { store.eventsOpen.toggle() }.buttonStyle(Pill(p: c))
-                }
             }
             if all.isEmpty { Text(store.loading ? "Loading…" : "No events today").font(face(15)).foregroundStyle(c.inkSoft) }
-            ForEach(Array(shown.enumerated()), id: \.offset) { _, ev in
+            VStack(alignment: .leading, spacing: 4) { ForEach(Array(shown.enumerated()), id: \.offset) { i, ev in
                 HStack(alignment: .firstTextBaseline, spacing: 14) {
                     if store.eventIcons {
                         Image(systemName: ev.start == nil ? "sun.max" : "clock").font(.system(size: 12, weight: .semibold)).foregroundStyle(c.accent).frame(width: 16)
@@ -279,8 +276,13 @@ struct EventsCard: View {
                         .font(face(13, .semibold)).foregroundStyle(c.accent).frame(width: 110, alignment: .leading)
                     Text(ev.title).font(face(15)).foregroundStyle(store.p.cardTitle ?? c.ink).lineLimit(1)
                     if !ev.location.isEmpty { Text("@ " + ev.location).font(face(13)).foregroundStyle(c.inkSoft).lineLimit(1) }
+                    // on the last row: the top-right corner is the hover top bar's
+                    if i == shown.count - 1, all.count > EventsCard.few {
+                        Spacer()
+                        Button(store.eventsOpen ? "Fewer" : "+\(all.count - EventsCard.few) more") { store.eventsOpen.toggle() }.buttonStyle(Pill(p: c)).fixedSize()
+                    }
                 }
-            }
+            } }
         }
         .padding(.horizontal, 36).padding(.top, 14).padding(.bottom, 22)
         .frame(maxWidth: 820).frame(maxWidth: .infinity)
