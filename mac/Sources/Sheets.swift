@@ -26,12 +26,13 @@ struct SheetFrame<Content: View>: View {
     }
 }
 
-/// A capsule text field on the raised card colour.
+/// A rounded text field on the raised card colour, wrapping long lines.
 func field(_ prompt: String, _ text: Binding<String>, _ p: Palette) -> some View {
-    TextField("", text: text, prompt: Text(prompt).foregroundColor(p.inkSoft))
+    TextField("", text: text, prompt: Text(prompt).foregroundColor(p.inkSoft), axis: .vertical)
+        .lineLimit(1...6)
         .textFieldStyle(.plain).font(face()).foregroundStyle(p.ink)
-        .padding(.horizontal, 18).frame(height: 44)
-        .background(Capsule().fill(p.raised)).overlay(Capsule().strokeBorder(p.line))
+        .padding(.horizontal, 18).padding(.vertical, 12).frame(minHeight: 44)
+        .background(RoundedRectangle(cornerRadius: 22).fill(p.raised)).overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(p.line))
 }
 
 /// a and e: the terminal app's form, docked at the bottom of the window
@@ -65,22 +66,20 @@ struct FormPanel: View {
             plain("Title", $f.title, display(18)).focused($focus, equals: .title)
                 .onSubmit { if editing == nil { focus = .list } else { save() } }
             HStack(spacing: 12) {
-                if editing == nil {
-                    TextField("", text: $query, prompt: Text(f.list.isEmpty ? "List" : f.list).foregroundColor(picking ? p.inkSoft : p.ink))
-                        .textFieldStyle(.plain).font(face(13)).foregroundStyle(p.ink)
-                        .focused($focus, equals: .list)
-                        .onSubmit(pick)
-                        .onChange(of: query) { hi = 0 }
-                        .onKeyPress(.downArrow) { hi = min(hi + 1, max(matches.count - 1, 0)); return .handled }
-                        .onKeyPress(.upArrow) { hi = max(hi - 1, 0); return .handled }
-                        .padding(.trailing, 18).frame(minWidth: 70, maxWidth: 180)
-                        .overlay(alignment: .trailing) {
-                            Menu {
-                                ForEach(store.lists, id: \.self) { l in Button(l) { f.list = l } }
-                            } label: { Image(systemName: "chevron.down") }
-                            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().foregroundStyle(p.inkSoft)
-                        }
-                }
+                TextField("", text: $query, prompt: Text(f.list.isEmpty ? "List" : f.list).foregroundColor(picking ? p.inkSoft : p.ink))
+                    .textFieldStyle(.plain).font(face(13)).foregroundStyle(p.ink)
+                    .focused($focus, equals: .list)
+                    .onSubmit(pick)
+                    .onChange(of: query) { hi = 0 }
+                    .onKeyPress(.downArrow) { hi = min(hi + 1, max(matches.count - 1, 0)); return .handled }
+                    .onKeyPress(.upArrow) { hi = max(hi - 1, 0); return .handled }
+                    .padding(.trailing, 18).frame(minWidth: 70, maxWidth: 180)
+                    .overlay(alignment: .trailing) {
+                        Menu {
+                            ForEach(store.lists, id: \.self) { l in Button(l) { f.list = l } }
+                        } label: { Image(systemName: "chevron.down") }
+                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().foregroundStyle(p.inkSoft)
+                    }
                 plain(editing?.due.map { "Due \(relativeDate($0))" } ?? "Due: friday, tomorrow 14:00", $f.due, face(13))
                     .focused($focus, equals: .due).onSubmit(save)
                     .frame(minWidth: 90, maxWidth: 220)
@@ -104,7 +103,7 @@ struct FormPanel: View {
         }
         .onAppear {
             if let r = editing {
-                f = Fields(title: r.title, priority: r.priority, notes: r.notes ?? "")
+                f = Fields(title: r.title, list: r.listName, priority: r.priority, notes: r.notes ?? "")
             } else {
                 f = Fields(list: defaultList, priority: "none", notes: thisWeekTag)
             }
@@ -388,21 +387,23 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             TextSettings()
             section("Theme", p)
-            HStack(spacing: 8) {
-                ForEach(Palette.themes, id: \.name) { t in
-                    Button {
-                        store.theme = t.name
-                        UserDefaults.standard.set(t.name, forKey: "theme")
-                    } label: {
-                        HStack(spacing: 7) {
-                            Circle().fill(t.palette.card).frame(width: 12, height: 12)
-                                .overlay(Circle().strokeBorder(t.palette.paper, lineWidth: 2))
-                            Text(t.name)
-                        }
-                    }.buttonStyle(Pill(p: p, primary: store.theme == t.name)).fixedSize()
-                }
-                Text("b flips light ↔ dark").font(face(13)).foregroundStyle(p.inkSoft)
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(Palette.themes, id: \.name) { t in
+                        Button {
+                            store.theme = t.name
+                            UserDefaults.standard.set(t.name, forKey: "theme")
+                        } label: {
+                            HStack(spacing: 7) {
+                                Circle().fill(t.palette.card).frame(width: 12, height: 12)
+                                    .overlay(Circle().strokeBorder(t.palette.paper, lineWidth: 2))
+                                Text(t.name)
+                            }
+                        }.buttonStyle(Pill(p: p, primary: store.theme == t.name)).fixedSize()
+                    }
+                }.padding(.bottom, 10) // room for the scroller
             }
+            Text("b flips light ↔ dark").font(face(13)).foregroundStyle(p.inkSoft)
             section("Window", p)
             row("Opacity", p) {
                 Slider(value: $store.opacity, in: 0.3...1).tint(p.accent)

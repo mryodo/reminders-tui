@@ -8,7 +8,12 @@ struct Palette {
     var card, cardInk, cardAccent: Color // title cards
     var cardTitle: Color? = nil // the card's title, if not cardInk
 
-    static let themes: [(name: String, palette: Palette, light: Bool)] = [("sw1comm", .sw1comm, true), ("ayugloom", .ayugloom, false)]
+    /// Each pairs with the other of its family for b.
+    static let themes: [(name: String, palette: Palette, light: Bool, pair: String)] = [
+        ("sw1comm", .sw1comm, true, "ayugloom"), ("ayugloom", .ayugloom, false, "sw1comm"),
+        ("everforest-light", .everforestLight, true, "everforest-dark"), ("everforest-dark", .everforestDark, false, "everforest-light"),
+        ("minischeme2-light", .minischeme2Light, true, "minischeme2-dark"), ("minischeme2-dark", .minischeme2Dark, false, "minischeme2-light"),
+    ]
 
     static let ayugloom = Palette(
         paper: Color(hex: 0x0f131a), raised: Color(hex: 0x1a1f29), sunk: Color(hex: 0x2d2d42), line: Color(hex: 0x34344b),
@@ -21,6 +26,34 @@ struct Palette {
         ink: Color(hex: 0x202020), inkSoft: Color(hex: 0x5f6078), accent: Color(hex: 0x0000a0), amber: Color(hex: 0x0048c8),
         teal: Color(hex: 0x45763c), red: Color(hex: 0xd00000), button: Color(hex: 0x0000a0), onButton: Color(hex: 0xd4d4d4),
         card: Color(hex: 0x0000a0), cardInk: Color(hex: 0xffffff), cardAccent: Color(hex: 0xa5c6f2))
+
+    // sainnhe/everforest, medium contrast, green accent as in threader:
+    // bg0, bg1, bg2, bg4, fg, grey1, green, yellow, aqua, red; cards on bg_green
+    static let everforestDark = Palette(
+        paper: Color(hex: 0x2d353b), raised: Color(hex: 0x343f44), sunk: Color(hex: 0x3d484d), line: Color(hex: 0x4f585e),
+        ink: Color(hex: 0xd3c6aa), inkSoft: Color(hex: 0x859289), accent: Color(hex: 0xa7c080), amber: Color(hex: 0xdbbc7f),
+        teal: Color(hex: 0x83c092), red: Color(hex: 0xe67e80), button: Color(hex: 0xa7c080), onButton: Color(hex: 0x2d353b),
+        card: Color(hex: 0x425047), cardInk: Color(hex: 0xd3c6aa), cardAccent: Color(hex: 0xa7c080), cardTitle: Color(hex: 0xe69875))
+
+    static let everforestLight = Palette(
+        paper: Color(hex: 0xfdf6e3), raised: Color(hex: 0xfffbef), sunk: Color(hex: 0xefebd4), line: Color(hex: 0xe0dcc7),
+        ink: Color(hex: 0x5c6a72), inkSoft: Color(hex: 0x939f91), accent: Color(hex: 0x8da101), amber: Color(hex: 0xdfa000),
+        teal: Color(hex: 0x35a77c), red: Color(hex: 0xf85552), button: Color(hex: 0x8da101), onButton: Color(hex: 0xfdf6e3),
+        card: Color(hex: 0xf0f1d2), cardInk: Color(hex: 0x5c6a72), cardAccent: Color(hex: 0x8da101), cardTitle: Color(hex: 0xf57d26))
+
+    // echasnovski's minischeme2 (mini.hues): bg, bg_mid / bg_edge2, bg_edge / bg_mid,
+    // bg_mid2, fg, fg_mid2, azure (the accent), orange, cyan, red; cards on accent_bg
+    static let minischeme2Dark = Palette(
+        paper: Color(hex: 0x081823), raised: Color(hex: 0x253642), sunk: Color(hex: 0x020f19), line: Color(hex: 0x435562),
+        ink: Color(hex: 0xd5d7c0), inkSoft: Color(hex: 0x91937d), accent: Color(hex: 0xa1ddff), amber: Color(hex: 0xfcc9a0),
+        teal: Color(hex: 0x94e6e5), red: Color(hex: 0xffc0c4), button: Color(hex: 0xa1ddff), onButton: Color(hex: 0x081823),
+        card: Color(hex: 0x003851), cardInk: Color(hex: 0xd5d7c0), cardAccent: Color(hex: 0xa1ddff), cardTitle: Color(hex: 0xfcc9a0))
+
+    static let minischeme2Light = Palette(
+        paper: Color(hex: 0xf9f0db), raised: Color(hex: 0xfff7e3), sunk: Color(hex: 0xd8cfbb), line: Color(hex: 0xb7af9b),
+        ink: Color(hex: 0x34394a), inkSoft: Color(hex: 0x6c7285), accent: Color(hex: 0x006699), amber: Color(hex: 0x835200),
+        teal: Color(hex: 0x008064), red: Color(hex: 0x870600), button: Color(hex: 0x006699), onButton: Color(hex: 0xf9f0db),
+        card: Color(hex: 0xc6e8ff), cardInk: Color(hex: 0x34394a), cardAccent: Color(hex: 0x006699), cardTitle: Color(hex: 0x835200))
 
     /// The palette inside a title card: the theme's heading colours.
     var onCard: Palette {

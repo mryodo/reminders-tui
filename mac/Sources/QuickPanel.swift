@@ -71,31 +71,33 @@ struct QuickPanelView: View {
         let f = parseQuickAdd(line)
         let m = matches
         VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "plus.circle.fill").font(.system(size: 26)).foregroundStyle(.white, .blue).frame(height: 44)
+                field("title @list !priority ~due #tag", $line, p)
+                    .focused($focus)
+                    .onChange(of: line) { hi = 0 }
+                    .onKeyPress(.downArrow) { m == nil ? .ignored : { hi = min(hi + 1, max(m!.count - 1, 0)); return .handled }() }
+                    .onKeyPress(.upArrow) { m == nil ? .ignored : { hi = max(hi - 1, 0); return .handled }() }
+                    .onKeyPress(.tab) { complete(m) }
+                    .onKeyPress(.return) { complete(m) }
+                    .onSubmit {
+                        guard !f.title.isEmpty else { return }
+                        store.add(f)
+                        close()
+                    }
+            }
+            if let m { suggestions(m) }
             HStack {
-                Caps(text: "New reminder", color: p.accent)
+                // what ⏎ will do
+                Caps(text: ["into " + (f.list.isEmpty ? defaultList : f.list), f.due.isEmpty ? "" : "due " + f.due,
+                            f.priority.isEmpty ? "" : f.priority + " priority"].filter { !$0.isEmpty }.joined(separator: " · "), color: p.inkSoft)
                 Spacer()
                 Caps(text: m == nil ? "⏎ adds · esc closes" : "↑↓ choose · tab or ⏎ completes", color: p.inkSoft)
             }
-            field("title @list !priority ~due #tag", $line, p)
-                .focused($focus)
-                .onChange(of: line) { hi = 0 }
-                .onKeyPress(.downArrow) { m == nil ? .ignored : { hi = min(hi + 1, max(m!.count - 1, 0)); return .handled }() }
-                .onKeyPress(.upArrow) { m == nil ? .ignored : { hi = max(hi - 1, 0); return .handled }() }
-                .onKeyPress(.tab) { complete(m) }
-                .onKeyPress(.return) { complete(m) }
-                .onSubmit {
-                    guard !f.title.isEmpty else { return }
-                    store.add(f)
-                    close()
-                }
-            if let m { suggestions(m) }
-            // what ⏎ will do
-            Caps(text: ["into " + (f.list.isEmpty ? defaultList : f.list), f.due.isEmpty ? "" : "due " + f.due,
-                        f.priority.isEmpty ? "" : f.priority + " priority"].filter { !$0.isEmpty }.joined(separator: " · "), color: p.inkSoft)
         }
         .padding(20)
         .frame(width: 560)
-        .background(RoundedRectangle(cornerRadius: 18).fill(p.paper))
+        .background(RoundedRectangle(cornerRadius: 18).fill(p.paper.opacity(store.opacity)))
         .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(p.line))
         .onExitCommand(perform: close)
         .preferredColorScheme(store.light ? .light : .dark)

@@ -291,10 +291,12 @@ struct EventsCard: View {
     }
 }
 
-/// A section of the view on its own card.
+/// A section of the view on its own card. A reminder dropped on it moves
+/// into its list or onto its day.
 struct GroupView: View {
     @Environment(Store.self) var store
     let g: Group
+    @State var targeted = false
 
     var body: some View {
         let p = store.p
@@ -313,6 +315,14 @@ struct GroupView: View {
         }
         .padding(store.cardPadding)
         .modifier(Raised(p: p, alpha: store.opacity, shown: store.cards, glass: store.glass))
+        .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(p.accent, lineWidth: 2).opacity(targeted ? 1 : 0))
+        .scaleEffect(targeted ? 1.015 : 1)
+        .animation(.snappy, value: targeted)
+        .dropDestination(for: String.self) { ids, _ in
+            guard let id = ids.first, g.list != nil || g.due != nil else { return false }
+            withAnimation(.snappy) { store.move(id, to: g) }
+            return true
+        } isTargeted: { targeted = $0 && (g.list != nil || g.due != nil) }
     }
 }
 
@@ -354,6 +364,7 @@ struct Row: View {
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { store.sel = r.id; store.ask = .edit(r) }
         .onTapGesture { store.sel = r.id }
+        .draggable(r.id) { Text(r.title).font(face(15)).foregroundStyle(p.ink).padding(8) }
         .contextMenu {
             Button("Complete") { store.sel = r.id; store.complete() }
             Button("Edit…") { store.ask = .edit(r) }

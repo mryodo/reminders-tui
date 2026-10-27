@@ -217,11 +217,13 @@ enum Tab: Int, CaseIterable, Identifiable {
 }
 
 /// A section of a view; list is set when it's one Reminders list, so
-/// quick add can file into it.
+/// quick add can file into it. Dropping a reminder on it moves it there,
+/// or gives it due, a "yyyy-MM-dd" day ("" clears it).
 struct Group: Hashable {
     var title: String
     var overdue = false
     var list: String?
+    var due: String?
     var items: [Reminder]
 }
 
@@ -244,14 +246,15 @@ func sections(_ tab: Tab, _ rs: [Reminder], _ now: Date = Date(), lists: [String
     var out: [Group]
     switch tab {
     case .today:
-        out = overdueGroup + [Group(title: "Due today", items: byPriority(rs.filter { $0.dueToday(now) })),
-                              Group(title: "No due date", items: rs.filter { $0.due == nil })]
+        out = overdueGroup + [Group(title: "Due today", due: fmt("yyyy-MM-dd").string(from: now), items: byPriority(rs.filter { $0.dueToday(now) })),
+                              Group(title: "No due date", due: "", items: rs.filter { $0.due == nil })]
     case .upcoming:
         let end = cal.date(byAdding: .day, value: 8, to: day(now))!
         let days = Dictionary(grouping: rs.filter { r in r.due.map { day($0) >= day(now) && day($0) < end } == true }) { day($0.due!) }
         out = overdueGroup + days.sorted { $0.key < $1.key }.map { d, rs in
             let rel = relativeDate(d, now)
-            return Group(title: rel == "today" || rel == "tomorrow" ? rel.capitalized : fmt("EEE MMM d").string(from: d), items: byPriority(rs))
+            return Group(title: rel == "today" || rel == "tomorrow" ? rel.capitalized : fmt("EEE MMM d").string(from: d),
+                         due: fmt("yyyy-MM-dd").string(from: d), items: byPriority(rs))
         }
     case .lists:
         out = byList(rs)
@@ -546,9 +549,35 @@ func parseEvents(_ out: String, _ on: Date) -> [Event] {
         var args = ["edit", r.short]
         if !f.title.isEmpty && f.title != r.title { args += ["--title", value(f.title)] }
         if !f.due.isEmpty { args += ["--due", normalizeDue(f.due)] }
+        if !f.list.isEmpty && f.list != r.listName { args += ["--list", f.list] }
         if f.priority != r.priority { args += ["--priority", f.priority] }
         if !f.notes.isEmpty && f.notes != (r.notes ?? "").trimmingCharacters(in: .whitespaces) { args += ["--notes", value(f.notes)] }
         if args.count > 2 { act(args, "Edited: \(f.title)") }
+    }
+
+    /// Moves the reminder with id into g's list or onto g's day, keeping its
+    /// time of day; here at once, so it slides over, before remindctl catches up.
+    func move(_ id: String, to g: Group) {
+        guard let i = reminders.firstIndex(where: { $0.id == id }) else { return }
+        let r = reminders[i]
+        var args = ["edit", r.short]
+        if let l = g.list, l != r.listName {
+            args += ["--list", l]
+            reminders[i].listName = l
+        }
+        if g.due == "", r.due != nil {
+            args += ["--clear-due"]
+            reminders[i].dueDate = nil
+        } else if let d = g.due.flatMap({ fmt("yyyy-MM-dd").date(from: $0) }), r.due.map(day) != d {
+            let t = r.due.map { cal.dateComponents([.hour, .minute], from: $0) }
+            let timed = (t?.hour ?? 0) != 0 || (t?.minute ?? 0) != 0
+            let new = cal.date(bySettingHour: t?.hour ?? 0, minute: t?.minute ?? 0, second: 0, of: d)!
+            args += ["--due", fmt(timed ? "yyyy-MM-dd HH:mm" : "yyyy-MM-dd").string(from: new)]
+            reminders[i].dueDate = iso.string(from: new)
+        }
+        guard args.count > 2 else { return }
+        sel = id
+        act(args, "Moved: \(r.title)")
     }
 
     /// remindctl takes a value starting with "-" for an option ("Missing value
@@ -567,7 +596,7 @@ func parseEvents(_ out: String, _ on: Date) -> [Event] {
     }
 
     func toggleTheme() {
-        theme = theme == "ayugloom" ? "sw1comm" : "ayugloom"
+        theme = Palette.themes.first { $0.name == theme }?.pair ?? "sw1comm"
         UserDefaults.standard.set(theme, forKey: "theme")
     }
 }
