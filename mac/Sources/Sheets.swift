@@ -273,6 +273,7 @@ struct Help: View {
         ("⌥Z", "quick add from any app, while Remind runs"),
         ("o", "quick add a subtask of the selected (#sub:<id> in its notes)"),
         ("a  e  d", "add · edit · delete"),
+        ("⇧0  ⇧1  ⇧k", "due today · tomorrow · in k days, keeping its time"),
         ("1–8  tab", "This Week, Today, Upcoming, Lists, Teaching, Research, Habits, Tasks · next"),
         ("/  esc", "search · clear"),
         ("r", "reload reminders and events"),

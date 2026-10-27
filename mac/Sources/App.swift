@@ -209,10 +209,21 @@ struct ContentView: View {
     func later(_ open: @escaping () -> Void) { DispatchQueue.main.async(execute: open) }
 
     /// The terminal app's keys.
+    /// The digit row's key codes, 1 to 9 then 0.
+    let digitKeys: [UInt16: Int] = [18: 1, 19: 2, 20: 3, 21: 4, 23: 5, 22: 6, 26: 7, 28: 8, 25: 9, 29: 0]
+
     func keys(_ k: KeyPress) -> KeyPress.Result {
         guard store.ask == nil, store.inserting == nil else { return .ignored }
         store.error = nil
         if !k.modifiers.subtracting([.shift, .numericPad, .function]).isEmpty { return .ignored }
+        // ⇧digit types !, @, … by layout (⇧7 is / on German), so go by the key itself
+        if k.modifiers.contains(.shift), let n = NSApp.currentEvent.flatMap({ digitKeys[$0.keyCode] }) {
+            if let r = store.selected {
+                let d = fmt("yyyy-MM-dd").string(from: cal.date(byAdding: .day, value: n, to: Date())!)
+                withAnimation(.snappy) { store.move(r.id, to: Group(title: "", due: d, items: [])) }
+            }
+            return .handled
+        }
         let c = k.characters
         switch c {
         case "j": store.step(1)
