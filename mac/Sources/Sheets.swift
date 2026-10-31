@@ -80,7 +80,7 @@ struct FormPanel: View {
                         } label: { Image(systemName: "chevron.down") }
                         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().foregroundStyle(p.inkSoft)
                     }
-                plain(editing?.due.map { "Due \(relativeDate($0))" } ?? "Due: friday, tomorrow 14:00", $f.due, face(13))
+                plain(editing?.due.map { "Due \(relativeDate($0))" } ?? "Due: next mon 3pm every 3 days", $f.due, face(13))
                     .focused($focus, equals: .due).onSubmit(save)
                     .frame(minWidth: 90, maxWidth: 220)
                 priorities
@@ -199,12 +199,14 @@ struct DeleteSheet: View {
 }
 
 /// l: picks the lists a fixed view shows. j k move, space or ⏎ adds or
-/// removes, esc closes.
+/// removes, n names a new list, esc closes.
 struct ListsSheet: View {
     @Environment(Store.self) var store
     let t: Tab
     @State var sel = 0
+    @State var name = "" // a new list's
     @FocusState var focus: Bool
+    @FocusState var naming: Bool
 
     var body: some View {
         let p = store.p
@@ -222,8 +224,11 @@ struct ListsSheet: View {
                 .frame(maxHeight: 420)
                 .onChange(of: sel) { proxy.scrollTo(sel) }
             }
+            field("New list", $name, p).focused($naming)
+                .onSubmit { store.createList(name, in: t); name = ""; focus = true }
+                .onExitCommand { name = ""; focus = true }
             HStack(spacing: 8) {
-                Caps(text: "j k move · space adds or removes · esc", color: p.inkSoft)
+                Caps(text: "j k move · space adds or removes · n new · esc", color: p.inkSoft)
                 Spacer()
                 Button("Reset") { store.viewLists[t.name] = nil }.buttonStyle(Pill(p: p)).disabled(store.viewLists[t.name] == nil)
                 Button("Done") { store.ask = nil }.buttonStyle(Pill(p: p, primary: true))
@@ -231,7 +236,9 @@ struct ListsSheet: View {
         }
         .focusable().focused($focus).focusEffectDisabled()
         .onKeyPress { k in
+            if naming { return .ignored } // typing a new list's name
             switch (k.key, k.characters) {
+            case (_, "n"): naming = true
             case (.downArrow, _), (_, "j"): sel = min(sel + 1, all.count - 1)
             case (.upArrow, _), (_, "k"): sel = max(sel - 1, 0)
             case (.return, _), (_, " "): if all.indices.contains(sel) { store.toggle(all[sel], in: t) }
@@ -278,13 +285,17 @@ struct Help: View {
         ("/  esc", "search · clear"),
         ("r", "reload reminders and events"),
         ("c  n", "all of today's events · notes for all or the selected"),
-        ("l", "the lists Teaching, Research, Habits or Tasks show"),
+        ("l", "the lists Teaching, Research, Habits or Tasks show · n there: a new list"),
         ("b", "light / dark"),
         ("⌘+ ⌘−  ⌘0", "text size · default"),
         ("?  q", "keys · quit"),
         ("", "Due dates"),
         ("friday  tue 9:30", "the next one, today included"),
         ("tomorrow 14:00", "or today, remindctl's YYYY-MM-DD[ HH:mm] …"),
+        ("next monday at 3pm", "plain English too, in the due field or a quick-add title"),
+        ("every 3 days", "or repeat weekly, every other month: a repeat, from today if no date"),
+        ("no repeat", "on edit, stops it repeating"),
+        ("… in research", "quick add: a list named at the end, \"list\" optional"),
     ]
 
     var body: some View {

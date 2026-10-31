@@ -27,7 +27,7 @@ struct Event: Hashable {
 
 /// The fields of a new or edited reminder.
 struct Fields: Equatable {
-    var title = "", list = "", priority = "", due = "", notes = ""
+    var title = "", list = "", priority = "", due = "", notes = "", recur = ""
 
     static let priorities = ["none", "low", "medium", "high"] // remindctl's
 }
@@ -108,9 +108,18 @@ func nest(_ items: [Reminder]) -> [Reminder] {
 /// @list !priority ~due #tag, a value quoted to hold spaces: ~"next monday".
 let tokenRe = try! NSRegularExpression(pattern: #"([@!~#])(?:"([^"]*)"|(\S+))"#)
 
+/// "… in research", "… to the joint sparsification list": a list said at
+/// the end of a quick-add title, matched to lists without case or symbols.
+let inListRe = try! NSRegularExpression(pattern: #"(?i)\s+(?:in|to|into|on|under)\s+(?:the\s+|my\s+)?(.+?)(?:\s+list)?$"#)
+func bare(_ s: String) -> String {
+    s.lowercased().unicodeScalars.filter { $0.properties.isAlphabetic || $0.properties.numericType != nil || $0 == " " } // drops the U+FE0E after ✍ etc., a mark
+        .map(String.init).joined().split(separator: " ").joined(separator: " ")
+}
+
 /// Splits a quick-add line into its fields; the rest is the title. Tags go
-/// to notes, #thisweek if there are none, as the add form prefills.
-func parseQuickAdd(_ line: String) -> Fields {
+/// to notes, #thisweek if there are none, as the add form prefills. A list
+/// from lists said at the end in words counts as @list.
+func parseQuickAdd(_ line: String, lists: [String] = []) -> Fields {
     var f = Fields(), tags: [String] = [], title = ""
     let ns = line as NSString
     var last = 0
@@ -126,7 +135,18 @@ func parseQuickAdd(_ line: String) -> Fields {
         }
     }
     title += ns.substring(from: last)
-    f.title = title.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    if !f.list.isEmpty, let l = lists.first(where: { bare($0) == bare(f.list) }) { f.list = l } // @tasks: ✍︎ Tasks
+    let n = natural(title, dates: f.due.isEmpty)
+    f.recur = n.recur
+    f.title = n.rest
+    if n.rest.isEmpty { f.title = title.split(whereSeparator: \.isWhitespace).joined(separator: " "); f.recur = "" } // "lunch tomorrow" is all date to it
+    else if !n.due.isEmpty { f.due = n.due }
+    if f.list.isEmpty, let m = inListRe.firstMatch(in: f.title, range: NSRange(f.title.startIndex..., in: f.title)),
+       let said = Range(m.range(at: 1), in: f.title).map({ bare(String(f.title[$0])) }), !said.isEmpty,
+       let l = lists.first(where: { bare($0) == said }) {
+        f.list = l
+        f.title = (f.title as NSString).replacingCharacters(in: m.range, with: "")
+    }
     f.notes = tags.isEmpty ? thisWeekTag : tags.joined(separator: " ")
     return f
 }
@@ -170,6 +190,54 @@ func normalizeDue(_ due: String, _ now: Date = Date()) -> String {
     if hh.isEmpty { return date }
     guard let h = Int(hh), let m = Int(g[3]), h < 24, m < 60 else { return due }
     return date + String(format: " %02d:%02d", h, m)
+}
+
+let numbers = ["one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+               "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "other": 2]
+/// "repeat weekly", "every day", "and repeat every three days", "every 2 weeks".
+let recurRe = try! NSRegularExpression(pattern: #"(?i)(?:\band\s+)?(?:\b(?:repeat(?:s|ing)?|recurring)\s+(daily|weekly|biweekly|monthly|yearly)\b|(?:\brepeat(?:s|ing)?\s+)?\bevery\s+(?:(\d+|\#(numbers.keys.joined(separator: "|")))\s+)?(day|week|month|year)s?\b)"#)
+/// "no repeat", "don't repeat", "stop repeating": the edit form's --no-repeat.
+let noRecurRe = try! NSRegularExpression(pattern: #"(?i)\b(?:no|don'?t|never|stop)\s+repeat(?:s|ing)?\b"#)
+let dateDetector = try! NSDataDetector(types: NSTextCheckingResult.CheckingType.date.rawValue)
+
+/// Reads a repeat and (if dates) a due date out of free text, as in
+/// "call bob next monday at 3pm and repeat every three days": the text
+/// without them, the due as remindctl takes it and its --repeat value,
+/// "" for what isn't there, "none" for "no repeat". A due date alone that normalizeDue knows goes
+/// through it, so "friday" still means today on a Friday.
+func natural(_ s: String, dates: Bool = true, _ now: Date = Date()) -> (rest: String, due: String, recur: String) {
+    var rest = s, due = "", recur = ""
+    if let m = noRecurRe.firstMatch(in: rest, range: NSRange(rest.startIndex..., in: rest)) {
+        recur = "none"
+        rest = (rest as NSString).replacingCharacters(in: m.range, with: " ")
+    } else if let m = recurRe.firstMatch(in: rest, range: NSRange(rest.startIndex..., in: rest)) {
+        let g = (1...3).map { Range(m.range(at: $0), in: rest).map { rest[$0].lowercased() } ?? "" }
+        if !g[0].isEmpty { recur = g[0] } else {
+            let n = Int(g[1]) ?? numbers[g[1]] ?? 1
+            recur = n == 1 ? ["day": "daily", "week": "weekly", "month": "monthly", "year": "yearly"][g[2]]! : "every \(n) \(g[2])s"
+        }
+        rest = (rest as NSString).replacingCharacters(in: m.range, with: " ")
+    }
+    rest = rest.split(whereSeparator: \.isWhitespace).joined(separator: " ").trimmingCharacters(in: CharacterSet(charactersIn: " ,;")) // "friday, no repeat"
+    guard dates else { return (rest, due, recur) }
+    if groups(dueRe, rest) != nil { return ("", normalizeDue(rest, now), recur) }
+    // ponytail: first date the detector finds wins, and only in English; "call at 5" isn't one
+    if let m = dateDetector.firstMatch(in: rest, range: NSRange(rest.startIndex..., in: rest)), let d = m.date {
+        let said = (rest as NSString).substring(with: m.range).lowercased()
+        let t = cal.dateComponents([.hour, .minute], from: d)
+        let timed = t.hour != 12 || t.minute != 0 || said.contains("noon") || said.contains("12") // 12:00 is its "no time"
+        due = fmt(timed ? "yyyy-MM-dd HH:mm" : "yyyy-MM-dd").string(from: d)
+        rest = (rest as NSString).replacingCharacters(in: m.range, with: " ")
+        rest = rest.replacingOccurrences(of: #"(?i)\s+(?:on|at|by|due)\s*$"#, with: "", options: .regularExpression)
+        rest = rest.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+    return (rest, due, recur)
+}
+
+/// The due field and repeat as remindctl's --due and --repeat values.
+func dueAndRepeat(_ f: Fields) -> (due: String, recur: String) {
+    let n = natural(f.due)
+    return (n.due.isEmpty ? n.rest : n.due, f.recur.isEmpty ? n.recur : f.recur)
 }
 
 /// "today", "in 3 days", "next week", else the date.
@@ -536,19 +604,42 @@ func parseEvents(_ out: String, _ on: Date) -> [Event] {
 
     func add(_ f: Fields) {
         guard !f.title.isEmpty else { return }
+        let list = f.list.isEmpty ? defaultList : f.list
+        if let bin = remindctl, !lists.isEmpty, !lists.contains(list) { // a new @list: make it, then add
+            lists.append(list)
+            if tab.defaultLists != nil, !included(tab).contains(list) { toggle(list, in: tab) } // shown where it was added
+            background({ try run(bin, ["list", self.value(list), "--create"]) }) { r in
+                if case .failure(let e) = r { self.error = e.localizedDescription; self.reload() } else { self.add(f) }
+            }
+            return
+        }
         var args = ["add", value(f.title)]
-        args += ["--list", f.list.isEmpty ? defaultList : f.list]
-        if !f.due.isEmpty { args += ["--due", normalizeDue(f.due)] }
+        args += ["--list", list]
+        var (due, recur) = dueAndRepeat(f)
+        if recur == "none" { recur = "" } // nothing to stop on a new one
+        if !due.isEmpty || !recur.isEmpty { args += ["--due", due.isEmpty ? "today" : due] } // a repeat starts today unless told
+        if !recur.isEmpty { args += ["--repeat", recur] }
         if !f.priority.isEmpty && f.priority != "none" { args += ["--priority", f.priority] }
         if !f.notes.isEmpty { args += ["--notes", value(f.notes)] }
         act(args, "Added: \(f.title)")
+    }
+
+    /// Makes a list and shows it in t's view.
+    func createList(_ name: String, in t: Tab) {
+        let name = name.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, !lists.contains(name) else { return }
+        lists.append(name) // here at once, before remindctl catches up
+        if !included(t).contains(name) { toggle(name, in: t) }
+        act(["list", value(name), "--create"], "Created list: \(name)")
     }
 
     /// Changes what differs from r; remindctl can't clear notes or a due date.
     func edit(_ r: Reminder, _ f: Fields) {
         var args = ["edit", r.short]
         if !f.title.isEmpty && f.title != r.title { args += ["--title", value(f.title)] }
-        if !f.due.isEmpty { args += ["--due", normalizeDue(f.due)] }
+        let (due, recur) = dueAndRepeat(f)
+        if !due.isEmpty { args += ["--due", due] }
+        if recur == "none" { args += ["--no-repeat"] } else if !recur.isEmpty { args += ["--repeat", recur] }
         if !f.list.isEmpty && f.list != r.listName { args += ["--list", f.list] }
         if f.priority != r.priority { args += ["--priority", f.priority] }
         if !f.notes.isEmpty && f.notes != (r.notes ?? "").trimmingCharacters(in: .whitespaces) { args += ["--notes", value(f.notes)] }
@@ -586,7 +677,7 @@ func parseEvents(_ out: String, _ on: Date) -> [Event] {
 
     /// Adds the quick-add line, into the open section's list unless it says @list.
     func quickAdd(_ line: String) {
-        var f = parseQuickAdd(line)
+        var f = parseQuickAdd(line, lists: lists)
         guard !f.title.isEmpty else { return }
         if f.list.isEmpty { f.list = inserting ?? "" }
         if let p = insertParent { f.notes += " #sub:\(p.short)" }

@@ -68,7 +68,7 @@ struct QuickPanelView: View {
 
     var body: some View {
         let p = store.p
-        let f = parseQuickAdd(line)
+        let f = parseQuickAdd(line, lists: store.lists)
         let m = matches
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 12) {
@@ -89,7 +89,7 @@ struct QuickPanelView: View {
             if let m { suggestions(m) }
             HStack {
                 // what ⏎ will do
-                Caps(text: ["into " + (f.list.isEmpty ? defaultList : f.list), f.due.isEmpty ? "" : "due " + f.due,
+                Caps(text: ["into " + (f.list.isEmpty ? defaultList : f.list), f.due.isEmpty ? "" : "due " + f.due, ["", "none"].contains(f.recur) ? "" : "repeats " + f.recur,
                             f.priority.isEmpty ? "" : f.priority + " priority"].filter { !$0.isEmpty }.joined(separator: " · "), color: p.inkSoft)
                 Spacer()
                 Caps(text: m == nil ? "⏎ adds · esc closes" : "↑↓ choose · tab or ⏎ completes", color: p.inkSoft)

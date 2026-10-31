@@ -32,6 +32,32 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(parseQuickAdd("buy milk ~fri"), Fields(title: "buy milk", due: "fri", notes: "#thisweek"))
     }
 
+    func testNatural() {
+        let now = date("2026-09-27 10:00") // a Sunday
+        func n(_ s: String) -> [String] { let r = natural(s, now); return [r.rest, r.due, r.recur] }
+        XCTAssertEqual(n("pay rent jan 3 2027 and repeat every three days"), ["pay rent", "2027-01-03", "every 3 days"])
+        XCTAssertEqual(n("call bob on jan 3 2027 at 3pm"), ["call bob", "2027-01-03 15:00", ""])
+        XCTAssertEqual(n("meet jan 3 2027 at noon every week"), ["meet", "2027-01-03 12:00", "weekly"])
+        XCTAssertEqual(n("sunday every other month"), ["", "2026-09-27", "every 2 months"])
+        XCTAssertEqual(n("water plants repeat daily"), ["water plants", "", "daily"])
+        XCTAssertEqual(n("friday, no repeat"), ["", "2026-10-02", "none"])
+        XCTAssertEqual(n("don't repeat"), ["", "", "none"])
+        XCTAssertEqual(n("weekly report"), ["weekly report", "", ""])
+        XCTAssertEqual(n("read chapter 2024"), ["read chapter 2024", "", ""])
+        XCTAssertEqual(parseQuickAdd(#"call bob every 2 weeks ~"next monday""#),
+                       Fields(title: "call bob", due: "next monday", notes: "#thisweek", recur: "every 2 weeks"))
+        XCTAssertEqual(parseQuickAdd("lunch tomorrow").title, "lunch tomorrow")
+        let lists = ["✍︎ Tasks", "⚔︎ Joint Sparsification", "Habits"]
+        XCTAssertEqual(parseQuickAdd("send draft to the joint sparsification list every week", lists: lists),
+                       Fields(title: "send draft", list: "⚔︎ Joint Sparsification", notes: "#thisweek", recur: "weekly"))
+        XCTAssertEqual(parseQuickAdd("call bob in tasks", lists: lists).list, "✍︎ Tasks")
+        XCTAssertEqual(parseQuickAdd("call bob @tasks", lists: lists).list, "✍︎ Tasks")
+        XCTAssertEqual(parseQuickAdd("call bob @Errands", lists: lists).list, "Errands") // new: add makes it
+        XCTAssertEqual(parseQuickAdd("talk to habits coach", lists: lists).title, "talk to habits coach") // only at the end
+        XCTAssertEqual(parseQuickAdd("walk in the park", lists: lists).title, "walk in the park")
+        XCTAssertEqual(parseQuickAdd("x in tasks @Habits", lists: lists), Fields(title: "x in tasks", list: "Habits", notes: "#thisweek"))
+    }
+
     func testListCompletion() {
         XCTAssertEqual(typingList("call bob @Ta"), "Ta")
         XCTAssertEqual(typingList(#"call @"✍︎ Ta"#), "✍︎ Ta")

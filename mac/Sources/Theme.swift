@@ -43,6 +43,7 @@ struct Palette {
 
     // echasnovski's minischeme2 (mini.hues): bg, bg_mid / bg_edge2, bg_edge / bg_mid,
     // bg_mid2, fg, fg_mid2, azure (the accent), orange, cyan, red; cards on accent_bg
+    // (light: on the azure itself, sw1comm-style, with the dark variant's azure and orange)
     static let minischeme2Dark = Palette(
         paper: Color(hex: 0x081823), raised: Color(hex: 0x253642), sunk: Color(hex: 0x020f19), line: Color(hex: 0x435562),
         ink: Color(hex: 0xd5d7c0), inkSoft: Color(hex: 0x91937d), accent: Color(hex: 0xa1ddff), amber: Color(hex: 0xfcc9a0),
@@ -53,7 +54,7 @@ struct Palette {
         paper: Color(hex: 0xf9f0db), raised: Color(hex: 0xfff7e3), sunk: Color(hex: 0xd8cfbb), line: Color(hex: 0xb7af9b),
         ink: Color(hex: 0x34394a), inkSoft: Color(hex: 0x6c7285), accent: Color(hex: 0x006699), amber: Color(hex: 0x835200),
         teal: Color(hex: 0x008064), red: Color(hex: 0x870600), button: Color(hex: 0x006699), onButton: Color(hex: 0xf9f0db),
-        card: Color(hex: 0xc6e8ff), cardInk: Color(hex: 0x34394a), cardAccent: Color(hex: 0x006699), cardTitle: Color(hex: 0x835200))
+        card: Color(hex: 0x006699), cardInk: Color(hex: 0xf9f0db), cardAccent: Color(hex: 0xa1ddff), cardTitle: Color(hex: 0xfcc9a0))
 
     /// The palette inside a title card: the theme's heading colours.
     var onCard: Palette {
